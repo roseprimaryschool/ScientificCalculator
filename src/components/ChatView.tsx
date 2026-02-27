@@ -1,9 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
-import { StorageService } from '../services/storage';
 import { MessageItem } from './MessageItem';
 import { Send, Hash, User as UserIcon } from 'lucide-react';
-import { v4 as uuidv4 } from 'uuid';
 
 interface ChatViewProps {
   currentUser: User;
@@ -15,74 +13,63 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
+  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const loadMessages = () => {
-      const allMessages = StorageService.getMessages();
-      const filtered = allMessages.filter(m => {
-        if (!recipient) return !m.recipient; // Lobby
-        return (m.sender === currentUser.username && m.recipient === recipient) ||
-               (m.sender === recipient && m.recipient === currentUser.username);
-      });
-      setMessages(filtered);
+    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    const ws = new WebSocket(`${protocol}//${window.location.host}`);
+    wsRef.current = ws;
+
+    ws.onopen = () => {
+      ws.send(JSON.stringify({ type: 'auth', userId: currentUser.id }));
     };
 
-    loadMessages();
-    const interval = setInterval(loadMessages, 1000); // Poll for new messages
-    return () => clearInterval(interval);
-  }, [recipient, currentUser.username]);
+    ws.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+      if (data.type === 'history') {
+        setMessages(data.messages);
+      } else if (data.type === 'new_message') {
+        setMessages(prev => [...prev, data.message]);
+      } else if (data.type === 'reaction_update') {
+        setMessages(prev => prev.map(m => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
+      }
+    };
+
+    return () => ws.close();
+  }, [currentUser.id]);
 
   useEffect(() => {
     if (scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
     }
-  }, [messages]);
+  }, [messages, recipient]);
+
+  const filteredMessages = messages.filter(m => {
+    if (!recipient) return !m.recipient; // Lobby
+    return (m.sender === currentUser.username && m.recipient === recipient) ||
+           (m.sender === recipient && m.recipient === currentUser.username);
+  });
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() || !wsRef.current) return;
 
-    const newMessage: Message = {
-      id: uuidv4(),
-      sender: currentUser.username,
+    wsRef.current.send(JSON.stringify({
+      type: 'chat',
       text: inputText,
-      timestamp: Date.now(),
-      reactions: [],
-      recipient
-    };
-
-    StorageService.saveMessage(newMessage);
-    setMessages(prev => [...prev, newMessage]);
+      recipientName: recipient
+    }));
     setInputText('');
   };
 
   const handleReact = (messageId: string, emoji: string) => {
-    const allMessages = StorageService.getMessages();
-    const msgIndex = allMessages.findIndex(m => m.id === messageId);
-    if (msgIndex === -1) return;
-
-    const msg = allMessages[msgIndex];
-    const reactionIndex = msg.reactions.findIndex(r => r.emoji === emoji);
-
-    if (reactionIndex > -1) {
-      const reaction = msg.reactions[reactionIndex];
-      if (!reaction.users.includes(currentUser.username)) {
-        reaction.users.push(currentUser.username);
-        reaction.count += 1;
-      }
-    } else {
-      msg.reactions.push({
-        emoji,
-        count: 1,
-        users: [currentUser.username]
-      });
-    }
-
-    StorageService.updateMessage(msg);
-    setMessages(prev => prev.map(m => m.id === messageId ? msg : m));
+    if (!wsRef.current) return;
+    wsRef.current.send(JSON.stringify({
+      type: 'reaction',
+      messageId,
+      emoji
+    }));
   };
-
-  const users = StorageService.getUsers();
 
   return (
     <div className="flex flex-col h-full bg-zinc-950">
@@ -100,15 +87,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide"
       >
-        {messages.map((msg) => {
-          const senderUser = users.find(u => u.username === msg.sender);
+        {filteredMessages.map((msg: any) => {
           return (
             <div key={msg.id} onClick={() => !recipient && msg.sender !== currentUser.username && onUserClick(msg.sender)}>
               <MessageItem
                 message={msg}
                 isOwn={msg.sender === currentUser.username}
                 onReact={(emoji) => handleReact(msg.id, emoji)}
-                profilePic={senderUser?.profilePic}
+                profilePic={msg.sender_pic}
               />
             </div>
           );

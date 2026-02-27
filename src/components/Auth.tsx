@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { StorageService } from '../services/storage';
+import { ApiService } from '../services/api';
 import { motion } from 'motion/react';
 import { Lock, User as UserIcon, LogIn, UserPlus } from 'lucide-react';
 
@@ -14,30 +14,21 @@ export const Auth: React.FC<AuthProps> = ({ onLogin }) => {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
 
-    if (isLogin) {
-      const user = StorageService.getUser(username);
-      if (user && user.passwordHash === password) {
+    try {
+      if (isLogin) {
+        const user = await ApiService.login(username, password);
         onLogin(user);
       } else {
-        setError('Invalid username or password');
+        const profilePic = `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`;
+        const user = await ApiService.signup(username, password, profilePic);
+        onLogin(user);
       }
-    } else {
-      if (StorageService.getUser(username)) {
-        setError('Username already exists');
-        return;
-      }
-      const newUser: User = {
-        username,
-        passwordHash: password,
-        profilePic: `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
-        friends: []
-      };
-      StorageService.saveUser(newUser);
-      onLogin(newUser);
+    } catch (err: any) {
+      setError(err.message || 'Authentication failed');
     }
   };
 

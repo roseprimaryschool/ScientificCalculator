@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { StorageService } from '../services/storage';
+import { ApiService } from '../services/api';
 import { 
   MessageSquare, 
   Users, 
@@ -32,28 +32,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
   const [friendUsername, setFriendUsername] = useState('');
   const [error, setError] = useState('');
 
-  const handleAddFriend = (e: React.FormEvent) => {
+  const handleAddFriend = async (e: React.FormEvent) => {
     e.preventDefault();
     setError('');
-    const targetUser = StorageService.getUser(friendUsername);
     
-    if (!targetUser) {
-      setError('User not found');
-      return;
+    try {
+      await ApiService.addFriend(currentUser.id, friendUsername);
+      // Update local user state (this is a bit hacky, ideally we'd have a global state or re-fetch)
+      const updatedUser = { ...currentUser, friends: [...currentUser.friends, friendUsername] };
+      ApiService.setCurrentUser(updatedUser);
+      setFriendUsername('');
+      onViewChange('private', friendUsername);
+    } catch (err: any) {
+      setError(err.message || 'Failed to add friend');
     }
-    if (targetUser.username === currentUser.username) {
-      setError("Can't add yourself");
-      return;
-    }
-    if (currentUser.friends.includes(targetUser.username)) {
-      setError('Already friends');
-      return;
-    }
-
-    const updatedUser = { ...currentUser, friends: [...currentUser.friends, targetUser.username] };
-    StorageService.saveUser(updatedUser);
-    setFriendUsername('');
-    onViewChange('private', targetUser.username);
   };
 
   return (
@@ -124,7 +116,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
             >
               <div className="flex items-center gap-3">
                 <img 
-                  src={StorageService.getUser(friend)?.profilePic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${friend}`} 
+                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${friend}`} 
                   className="w-8 h-8 rounded-lg border border-zinc-800"
                   referrerPolicy="no-referrer"
                 />

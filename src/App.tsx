@@ -5,7 +5,7 @@ import { Sidebar } from './components/Sidebar';
 import { ChatView } from './components/ChatView';
 import { Settings } from './components/Settings';
 import { User } from './types';
-import { StorageService } from './services/storage';
+import { ApiService } from './services/api';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -15,25 +15,25 @@ export default function App() {
   const [activeRecipient, setActiveRecipient] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const unlocked = StorageService.getIsUnlocked();
-    const user = StorageService.getCurrentUser();
+    const unlocked = ApiService.getIsUnlocked();
+    const user = ApiService.getCurrentUser();
     setIsUnlocked(unlocked);
     setCurrentUser(user);
   }, []);
 
   const handleUnlock = () => {
     setIsUnlocked(true);
-    StorageService.setIsUnlocked(true);
+    ApiService.setIsUnlocked(true);
   };
 
   const handleLogin = (user: User) => {
     setCurrentUser(user);
-    StorageService.setCurrentUser(user);
+    ApiService.setCurrentUser(user);
   };
 
   const handleLogout = () => {
     setCurrentUser(null);
-    StorageService.setCurrentUser(null);
+    ApiService.setCurrentUser(null);
   };
 
   const handleViewChange = (view: 'lobby' | 'private' | 'settings', recipient?: string) => {
@@ -43,7 +43,7 @@ export default function App() {
 
   const handleReturnToCalc = () => {
     setIsUnlocked(false);
-    StorageService.setIsUnlocked(false);
+    ApiService.setIsUnlocked(false);
   };
 
   if (!isUnlocked) {

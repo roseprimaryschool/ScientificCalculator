@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { User } from '../types';
-import { StorageService } from '../services/storage';
+import { ApiService } from '../services/api';
 import { Camera, Link as LinkIcon, Save, CheckCircle } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -13,12 +13,17 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser, onUpdate }) => 
   const [profilePic, setProfilePic] = useState(currentUser.profilePic);
   const [saved, setSaved] = useState(false);
 
-  const handleSave = () => {
-    const updatedUser = { ...currentUser, profilePic };
-    StorageService.saveUser(updatedUser);
-    onUpdate(updatedUser);
-    setSaved(true);
-    setTimeout(() => setSaved(false), 2000);
+  const handleSave = async () => {
+    try {
+      await ApiService.updateUser(currentUser.id, profilePic);
+      const updatedUser = { ...currentUser, profilePic };
+      ApiService.setCurrentUser(updatedUser);
+      onUpdate(updatedUser);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 2000);
+    } catch (err) {
+      console.error(err);
+    }
   };
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
