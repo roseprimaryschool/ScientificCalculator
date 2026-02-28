@@ -202,6 +202,30 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser, onUpdate }) => 
             All your data is stored locally in your browser's encrypted sandbox. No data is transmitted to any external servers, ensuring your conversations remain private and persistent on this device.
           </p>
         </div>
+
+        <div className="mt-8">
+          <button
+            onClick={handleSave}
+            disabled={saved}
+            className={`w-full flex items-center justify-center gap-3 py-4 rounded-2xl font-bold text-lg transition-all active:scale-[0.98] ${
+              saved 
+                ? 'bg-emerald-500/20 text-emerald-500 border border-emerald-500/30' 
+                : 'bg-emerald-600 hover:bg-emerald-500 text-white shadow-xl shadow-emerald-900/40'
+            }`}
+          >
+            {saved ? (
+              <>
+                <CheckCircle className="w-6 h-6" />
+                <span>Changes Applied Successfully</span>
+              </>
+            ) : (
+              <>
+                <Save className="w-6 h-6" />
+                <span>Apply All Changes</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );
