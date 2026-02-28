@@ -17,8 +17,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [inputText, setInputText] = useState('');
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [recipientData, setRecipientData] = useState<{ presence?: string, statusMessage?: string } | null>(null);
+  const [isConnected, setIsConnected] = useState(true);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    const checkConnection = setInterval(() => {
+      setIsConnected(GunService.isConnected());
+    }, 5000);
+    return () => clearInterval(checkConnection);
+  }, []);
 
   useEffect(() => {
     if (recipient) {
@@ -94,7 +102,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       : gun.get('calcchat_lobby_v2');
 
     const msgId = uuidv4();
-    chatNode.get(msgId).put({
+    const msgData = {
       sender: currentUser.username,
       sender_pic: currentUser.profilePic,
       text: inputText,
@@ -102,6 +110,17 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       timestamp: Date.now(),
       recipient: recipient || '',
       reactions: '[]'
+    };
+
+    // Use a callback to ensure Gun processes the put
+    chatNode.get(msgId).put(msgData, (ack: any) => {
+      if (ack.err) {
+        console.error('Gun.js send error:', ack.err);
+        // Retry once after a short delay if it failed
+        setTimeout(() => {
+          chatNode.get(msgId).put(msgData);
+        }, 1000);
+      }
     });
 
     if (selectedImage) {
@@ -207,6 +226,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             <p className="text-zinc-500 text-xs">{recipient ? (recipientData?.presence || 'offline') : 'Everyone is here'}</p>
           </div>
         </div>
+        
+        {!isConnected && (
+          <div className="ml-auto flex items-center gap-2 px-3 py-1 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
+            <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
+            <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider">Connecting to Network...</span>
+          </div>
+        )}
       </div>
 
       <div 

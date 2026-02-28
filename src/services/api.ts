@@ -56,7 +56,7 @@ export const ApiService = {
             };
             
             // Update global user list for lookup
-            GunService.users.get(username).put({
+            const globalProfile = {
               username,
               profilePic: userData.profilePic,
               createdAt: userData.createdAt,
@@ -66,6 +66,10 @@ export const ApiService = {
               theme: userData.theme,
               customBg: userData.customBg,
               presence: 'online'
+            };
+
+            GunService.users.get(username).put(globalProfile, (ack: any) => {
+              if (ack.err) console.error('Global profile update error:', ack.err);
             });
 
             ApiService.logAdminAction('login', username, `${username} logged in`);
@@ -86,7 +90,7 @@ export const ApiService = {
           // Set user profile in Gun
           user.auth(username, password, () => {
              const now = Date.now();
-             user.get('profile').put({ 
+             const profileData = { 
                profilePic, 
                friends: [], 
                createdAt: now, 
@@ -96,19 +100,13 @@ export const ApiService = {
                theme: 'default',
                customBg: '',
                presence: 'online'
-             });
-             
-             // Update global user list
-             GunService.users.get(username).put({
-               username,
-               profilePic,
-               createdAt: now,
-               lastOnline: now,
-               bio: '',
-               statusMessage: '',
-               theme: 'default',
-               customBg: '',
-               presence: 'online'
+             };
+
+             user.get('profile').put(profileData, (ack: any) => {
+               if (ack.err) console.error('Profile put error:', ack.err);
+               
+               // Update global user list
+               GunService.users.get(username).put(profileData);
              });
 
              ApiService.logAdminAction('signup', username, `New account created: ${username}`);

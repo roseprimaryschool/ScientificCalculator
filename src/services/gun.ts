@@ -22,6 +22,13 @@ export const gun = Gun({
 export const user = gun.user().recall({ sessionStorage: true });
 
 export const GunService = {
+  // Check if we have active peer connections
+  isConnected: () => {
+    const mesh = (gun as any)._?.opt?.mesh;
+    if (!mesh) return false;
+    return Object.values(mesh.peers || {}).some((peer: any) => peer.wire && peer.wire.readyState === 1);
+  },
+
   // We'll use this to sync messages and reactions
   messages: gun.get('calcchat_messages_v2'),
   
