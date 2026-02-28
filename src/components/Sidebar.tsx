@@ -66,12 +66,15 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
   useEffect(() => {
     if (!currentUser.isAdmin) {
-      const unsubscribe = gunUser.get('profile').get('recentChats').map().on((val, key) => {
+      const recentChatsNode = gunUser.get('profile').get('recentChats');
+      recentChatsNode.map().on((val, key) => {
         if (val) {
           setRecentChats(prev => prev.includes(key) ? prev : [...prev, key]);
         }
       });
-      return () => unsubscribe;
+      return () => {
+        recentChatsNode.off();
+      };
     }
   }, [currentUser.isAdmin]);
 

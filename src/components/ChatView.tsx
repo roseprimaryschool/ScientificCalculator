@@ -44,17 +44,18 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
       : gun.get('calcchat_lobby_v2');
 
-    const unsubscribe = chatNode.map().on((msg: any, id: string) => {
-      if (msg && msg.text) {
+    chatNode.map().on((msg: any, id: string) => {
+      if (msg && (msg.text || msg.image)) {
         setMessages(prev => {
           // Prevent duplicates
           if (prev.some(m => m.id === id)) return prev;
+          
           const newMsg: Message = {
             id,
             sender: msg.sender,
             sender_pic: msg.sender_pic,
-            text: msg.text,
-            timestamp: msg.timestamp,
+            text: msg.text || '',
+            timestamp: msg.timestamp || Date.now(),
             reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
             recipient: msg.recipient,
             image: msg.image
@@ -65,12 +66,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             gunUser.get('profile').get('recentChats').get(msg.sender).put(true);
           }
 
-          return [...prev, newMsg].sort((a, b) => a.timestamp - b.timestamp);
+          const updated = [...prev, newMsg].sort((a, b) => a.timestamp - b.timestamp);
+          // Keep only last 200 messages for performance
+          return updated.slice(-200);
         });
       }
     });
 
     return () => {
+      chatNode.off();
       setMessages([]);
     };
   }, [recipient, currentUser.username]);
