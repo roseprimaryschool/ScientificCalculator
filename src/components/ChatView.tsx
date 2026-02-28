@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
 import { MessageItem } from './MessageItem';
-import { Send, Hash, User as UserIcon } from 'lucide-react';
-import { gun, GunService } from '../services/gun';
+import { Send, Hash, User as UserIcon, Image as ImageIcon, X } from 'lucide-react';
+import { gun, user as gunUser, GunService } from '../services/gun';
+import { ApiService } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
 
 interface ChatViewProps {
@@ -14,7 +15,28 @@ interface ChatViewProps {
 export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUserClick }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
+  const [selectedImage, setSelectedImage] = useState<string | null>(null);
+  const [recipientData, setRecipientData] = useState<{ presence?: string, statusMessage?: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (recipient) {
+      GunService.users.get(recipient).on((data: any) => {
+        if (data) {
+          setRecipientData({
+            presence: data.presence || 'offline',
+            statusMessage: data.statusMessage || ''
+          });
+        }
+      });
+      return () => {
+        GunService.users.get(recipient).off();
+      };
+    } else {
+      setRecipientData(null);
+    }
+  }, [recipient]);
 
   useEffect(() => {
     // Gun.js real-time listener
@@ -34,16 +56,21 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             text: msg.text,
             timestamp: msg.timestamp,
             reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
-            recipient: msg.recipient
+            recipient: msg.recipient,
+            image: msg.image
           };
+
+          // If it's a private message and we're the recipient, add to recent chats
+          if (recipient && msg.sender !== currentUser.username) {
+            gunUser.get('profile').get('recentChats').get(msg.sender).put(true);
+          }
+
           return [...prev, newMsg].sort((a, b) => a.timestamp - b.timestamp);
         });
       }
     });
 
     return () => {
-      // Gun doesn't have a direct "off" for map().on() in some versions, 
-      // but we can clear the state when switching rooms
       setMessages([]);
     };
   }, [recipient, currentUser.username]);
@@ -56,7 +83,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim()) return;
+    if (!inputText.trim() && !selectedImage) return;
 
     const chatNode = recipient 
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
@@ -67,12 +94,50 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       sender: currentUser.username,
       sender_pic: currentUser.profilePic,
       text: inputText,
+      image: selectedImage || '',
       timestamp: Date.now(),
       recipient: recipient || '',
       reactions: '[]'
     });
 
+    if (selectedImage) {
+      ApiService.logAdminAction('image_upload', currentUser.username, `${currentUser.username} uploaded an image`);
+    }
+
+    // Add to recent chats when sending
+    if (recipient) {
+      gunUser.get('profile').get('recentChats').get(recipient).put(true);
+    }
+
     setInputText('');
+    setSelectedImage(null);
+  };
+
+  const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        setSelectedImage(reader.result as string);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const handlePaste = (e: React.ClipboardEvent) => {
+    const items = e.clipboardData.items;
+    for (let i = 0; i < items.length; i++) {
+      if (items[i].type.indexOf('image') !== -1) {
+        const blob = items[i].getAsFile();
+        if (blob) {
+          const reader = new FileReader();
+          reader.onloadend = () => {
+            setSelectedImage(reader.result as string);
+          };
+          reader.readAsDataURL(blob);
+        }
+      }
+    }
   };
 
   const handleReact = (messageId: string, emoji: string) => {
@@ -102,15 +167,41 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     });
   };
 
+  const handleDelete = (messageId: string) => {
+    if (!currentUser.isAdmin) return;
+    const chatId = recipient ? [currentUser.username, recipient].sort().join('_') : '';
+    ApiService.deleteMessage(chatId, messageId, currentUser.username, !recipient);
+    setMessages(prev => prev.filter(m => m.id !== messageId));
+  };
+
   return (
-    <div className="flex flex-col h-full bg-zinc-950">
-      <div className="p-4 border-bottom border-zinc-800 flex items-center gap-3 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-10">
-        <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
-          {recipient ? <UserIcon className="text-emerald-500 w-5 h-5" /> : <Hash className="text-emerald-500 w-5 h-5" />}
-        </div>
-        <div>
-          <h3 className="text-white font-bold">{recipient || 'Public Lobby'}</h3>
-          <p className="text-zinc-500 text-xs">{recipient ? 'Private Chat' : 'Everyone is here'}</p>
+    <div className="flex flex-col h-full bg-transparent">
+      <div className="p-4 border-bottom border-zinc-800 flex items-center gap-3 bg-zinc-900/80 backdrop-blur-md sticky top-0 z-10">
+        <div 
+          className="flex items-center gap-3 cursor-pointer hover:opacity-80 transition-opacity"
+          onClick={() => recipient && onUserClick(recipient)}
+        >
+          <div className="relative">
+            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center border border-emerald-500/20">
+              {recipient ? <UserIcon className="text-emerald-500 w-5 h-5" /> : <Hash className="text-emerald-500 w-5 h-5" />}
+            </div>
+            {recipient && (
+              <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-zinc-900 ${
+                recipientData?.presence === 'online' ? 'bg-emerald-500' : 
+                recipientData?.presence === 'idle' ? 'bg-yellow-500' : 
+                recipientData?.presence === 'dnd' ? 'bg-red-500' : 'bg-zinc-500'
+              }`}></div>
+            )}
+          </div>
+          <div>
+            <h3 className="text-white font-bold flex items-center gap-2">
+              {recipient || 'Public Lobby'}
+              {recipientData?.statusMessage && (
+                <span className="text-[10px] text-emerald-500 font-normal italic">"{recipientData.statusMessage}"</span>
+              )}
+            </h3>
+            <p className="text-zinc-500 text-xs">{recipient ? (recipientData?.presence || 'offline') : 'Everyone is here'}</p>
+          </div>
         </div>
       </div>
 
@@ -120,11 +211,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       >
         {messages.map((msg: any) => {
           return (
-            <div key={msg.id} onClick={() => !recipient && msg.sender !== currentUser.username && onUserClick(msg.sender)}>
+            <div key={msg.id}>
               <MessageItem
                 message={msg}
                 isOwn={msg.sender === currentUser.username}
+                isAdmin={currentUser.isAdmin}
                 onReact={(emoji) => handleReact(msg.id, emoji)}
+                onDelete={() => handleDelete(msg.id)}
+                onProfileClick={onUserClick}
                 profilePic={msg.sender_pic}
               />
             </div>
@@ -133,12 +227,43 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       </div>
 
       <form onSubmit={handleSend} className="p-4 bg-zinc-900/50 border-t border-zinc-800">
+        {selectedImage && (
+          <div className="mb-4 relative inline-block">
+            <img 
+              src={selectedImage} 
+              alt="Preview" 
+              className="max-h-32 rounded-xl border border-zinc-700 shadow-xl"
+            />
+            <button
+              type="button"
+              onClick={() => setSelectedImage(null)}
+              className="absolute -top-2 -right-2 bg-red-500 text-white p-1 rounded-full hover:bg-red-600 transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImageSelect}
+            accept="image/*"
+            className="hidden"
+          />
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="bg-zinc-800 hover:bg-zinc-700 text-zinc-400 p-3 rounded-xl transition-all active:scale-95"
+          >
+            <ImageIcon className="w-5 h-5" />
+          </button>
           <input
             type="text"
             value={inputText}
             onChange={(e) => setInputText(e.target.value)}
-            placeholder="Type a message..."
+            onPaste={handlePaste}
+            placeholder="Type a message or paste an image..."
             className="flex-1 bg-zinc-950 border border-zinc-800 rounded-xl px-4 py-3 text-white focus:outline-none focus:border-emerald-500/50 transition-colors"
           />
           <button

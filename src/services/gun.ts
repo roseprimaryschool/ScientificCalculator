@@ -16,5 +16,14 @@ export const GunService = {
   messages: gun.get('calcchat_messages_v2'),
   
   // We'll use this for global user discovery (optional)
-  users: gun.get('calcchat_users_v2')
+  users: gun.get('calcchat_users_v2'),
+
+  // Global list of banned usernames
+  banned: gun.get('calcchat_banned_v2'),
+
+  // Admin logs
+  logs: gun.get('calcchat_logs_v2'),
+
+  // Global presence
+  presence: gun.get('calcchat_presence_v2')
 };

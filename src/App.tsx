@@ -4,21 +4,93 @@ import { Auth } from './components/Auth';
 import { Sidebar } from './components/Sidebar';
 import { ChatView } from './components/ChatView';
 import { Settings } from './components/Settings';
+import { AdminPanel } from './components/AdminPanel';
+import { UserProfileModal } from './components/UserProfileModal';
 import { User } from './types';
 import { ApiService } from './services/api';
+import { GunService } from './services/gun';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [isUnlocked, setIsUnlocked] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
-  const [activeView, setActiveView] = useState<'lobby' | 'private' | 'settings'>('lobby');
+  const [activeView, setActiveView] = useState<'lobby' | 'private' | 'settings' | 'admin'>('lobby');
   const [activeRecipient, setActiveRecipient] = useState<string | undefined>(undefined);
+  const [selectedProfile, setSelectedProfile] = useState<Partial<User> | null>(null);
+  const [lastActivity, setLastActivity] = useState(Date.now());
+
+  // Theme application
+  useEffect(() => {
+    if (currentUser?.theme || currentUser?.customBg) {
+      const root = document.documentElement;
+      const theme = currentUser.theme || 'default';
+      
+      // Remove old theme classes
+      root.classList.remove('theme-default', 'theme-midnight', 'theme-sunset', 'theme-lavender', 'theme-crimson');
+      root.classList.add(`theme-${theme}`);
+
+      if (currentUser.customBg) {
+        root.style.setProperty('--custom-bg', `url(${currentUser.customBg})`);
+        root.classList.add('has-custom-bg');
+      } else {
+        root.style.removeProperty('--custom-bg');
+        root.classList.remove('has-custom-bg');
+      }
+    }
+  }, [currentUser?.theme, currentUser?.customBg]);
+
+  // Presence tracking
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const updateActivity = () => {
+      setLastActivity(Date.now());
+      if (currentUser.presence !== 'online' && currentUser.presence !== 'dnd') {
+        ApiService.updatePresence(currentUser.username, 'online');
+      }
+    };
+
+    window.addEventListener('mousemove', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    window.addEventListener('click', updateActivity);
+
+    const interval = setInterval(() => {
+      const now = Date.now();
+      const diff = now - lastActivity;
+
+      if (diff > 300000) { // 5 minutes
+        if (currentUser.presence !== 'idle') {
+          ApiService.updatePresence(currentUser.username, 'idle');
+        }
+      }
+    }, 60000);
+
+    return () => {
+      window.removeEventListener('mousemove', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('click', updateActivity);
+      clearInterval(interval);
+    };
+  }, [currentUser, lastActivity]);
 
   useEffect(() => {
     const unlocked = ApiService.getIsUnlocked();
     const user = ApiService.getCurrentUser();
     setIsUnlocked(unlocked);
-    setCurrentUser(user);
+    
+    if (user) {
+      // Check if user is banned
+      GunService.banned.get(user.username).once((isBanned) => {
+        if (isBanned) {
+          setCurrentUser(null);
+          ApiService.setCurrentUser(null);
+          alert('Your account has been banned.');
+        } else {
+          setCurrentUser(user);
+          if (user.isAdmin) setActiveView('admin');
+        }
+      });
+    }
   }, []);
 
   const handleUnlock = () => {
@@ -29,16 +101,26 @@ export default function App() {
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     ApiService.setCurrentUser(user);
+    if (user.isAdmin) setActiveView('admin');
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      ApiService.updatePresence(currentUser.username, 'offline');
+    }
     setCurrentUser(null);
     ApiService.setCurrentUser(null);
+    setActiveView('lobby');
   };
 
-  const handleViewChange = (view: 'lobby' | 'private' | 'settings', recipient?: string) => {
+  const handleViewChange = (view: 'lobby' | 'private' | 'settings' | 'admin', recipient?: string) => {
     setActiveView(view);
     setActiveRecipient(recipient);
+  };
+
+  const handleProfileClick = async (username: string) => {
+    const profile = await ApiService.getUserProfile(username);
+    setSelectedProfile({ username, ...profile });
   };
 
   const handleReturnToCalc = () => {
@@ -47,18 +129,35 @@ export default function App() {
   };
 
   if (!isUnlocked) {
-    return <Calculator onUnlock={handleUnlock} />;
+    return (
+      <div className="theme-wrapper h-screen overflow-hidden">
+        <Calculator onUnlock={handleUnlock} />
+      </div>
+    );
   }
 
   if (!currentUser) {
-    return <Auth onLogin={handleLogin} />;
+    return (
+      <div className="theme-wrapper h-screen overflow-hidden">
+        <Auth onLogin={handleLogin} />
+      </div>
+    );
+  }
+
+  if (currentUser.isAdmin && activeView === 'admin') {
+    return (
+      <div className="theme-wrapper h-screen overflow-hidden">
+        <AdminPanel onLogout={handleLogout} onBackToChat={() => setActiveView('lobby')} />
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-screen bg-zinc-950 overflow-hidden font-sans selection:bg-emerald-500/30">
+    <div className="theme-wrapper h-screen overflow-hidden flex font-sans selection:bg-emerald-500/30">
       <Sidebar 
         currentUser={currentUser}
         onViewChange={handleViewChange}
+        onProfileClick={handleProfileClick}
         onReturnToCalc={handleReturnToCalc}
         onLogout={handleLogout}
         activeView={activeView}
@@ -84,12 +183,17 @@ export default function App() {
               <ChatView 
                 currentUser={currentUser} 
                 recipient={activeRecipient}
-                onUserClick={(username) => handleViewChange('private', username)}
+                onUserClick={handleProfileClick}
               />
             )}
           </motion.div>
         </AnimatePresence>
       </main>
+
+      <UserProfileModal 
+        user={selectedProfile} 
+        onClose={() => setSelectedProfile(null)} 
+      />
     </div>
   );
 }
