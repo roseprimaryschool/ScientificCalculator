@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { ApiService } from '../services/api';
-import { gun, user as gunUser, GunService } from '../services/gun';
+import { gun, user as gunUser } from '../services/gun';
 import { 
   MessageSquare, 
   Users, 
@@ -36,43 +36,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
 }) => {
   const [friendUsername, setFriendUsername] = useState('');
   const [recentChats, setRecentChats] = useState<string[]>([]);
-  const [presenceMap, setPresenceMap] = useState<Record<string, { presence: string, statusMessage?: string }>>({});
   const [error, setError] = useState('');
 
   useEffect(() => {
-    // Listen for presence of friends and recent chats
-    const usersToTrack = [...currentUser.friends, ...recentChats];
-
-    usersToTrack.forEach(username => {
-      GunService.users.get(username).on((data: any) => {
-        setPresenceMap(prev => ({
-          ...prev,
-          [username]: { 
-            presence: data?.presence || 'offline',
-            statusMessage: data?.statusMessage || ''
-          }
-        }));
-      });
-    });
-
-    return () => {
-      usersToTrack.forEach(username => {
-        GunService.users.get(username).off();
-      });
-    };
-  }, [currentUser.friends, recentChats]);
-
-  useEffect(() => {
     if (!currentUser.isAdmin) {
-      const recentChatsNode = gunUser.get('profile').get('recentChats');
-      recentChatsNode.map().on((val, key) => {
+      const unsubscribe = gunUser.get('profile').get('recentChats').map().on((val, key) => {
         if (val) {
           setRecentChats(prev => prev.includes(key) ? prev : [...prev, key]);
         }
       });
-      return () => {
-        recentChatsNode.off();
-      };
+      return () => unsubscribe;
     }
   }, [currentUser.isAdmin]);
 
@@ -100,22 +73,18 @@ export const Sidebar: React.FC<SidebarProps> = ({
     <div className="w-72 h-full bg-zinc-900 border-r border-zinc-800 flex flex-col">
       <div className="p-6 border-b border-zinc-800">
         <div className="flex items-center gap-3 mb-6">
-          <div className="relative">
-            <img 
-              src={currentUser.profilePic} 
-              alt={currentUser.username} 
-              className="w-10 h-10 rounded-xl border border-zinc-700 shadow-lg"
-              referrerPolicy="no-referrer"
-            />
-            <div className={`absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-zinc-900 ${
-              currentUser.presence === 'online' ? 'bg-emerald-500' : 
-              currentUser.presence === 'idle' ? 'bg-yellow-500' : 
-              currentUser.presence === 'dnd' ? 'bg-red-500' : 'bg-zinc-500'
-            }`}></div>
-          </div>
-          <div className="flex-1 min-w-0">
-            <h4 className="text-white font-bold text-sm truncate">{currentUser.username}</h4>
-            <p className="text-emerald-500 text-[10px] truncate italic">{currentUser.statusMessage || 'No status set'}</p>
+          <img 
+            src={currentUser.profilePic} 
+            alt={currentUser.username} 
+            className="w-10 h-10 rounded-xl border border-zinc-700 shadow-lg"
+            referrerPolicy="no-referrer"
+          />
+          <div>
+            <h4 className="text-white font-bold text-sm truncate w-32">{currentUser.username}</h4>
+            <div className="flex items-center gap-1.5">
+              <div className="w-2 h-2 bg-emerald-500 rounded-full animate-pulse"></div>
+              <span className="text-zinc-500 text-[10px] uppercase tracking-wider font-bold">Online</span>
+            </div>
           </div>
         </div>
 
@@ -175,31 +144,20 @@ export const Sidebar: React.FC<SidebarProps> = ({
               onClick={() => onViewChange('private', friend)}
               className={`w-full flex items-center justify-between p-2 rounded-xl transition-all ${activeRecipient === friend ? 'bg-zinc-800 border border-zinc-700' : 'hover:bg-zinc-800/50'}`}
             >
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="relative flex-shrink-0">
-                  <img 
-                    src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${friend}`} 
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      onProfileClick(friend);
-                    }}
-                    className="w-8 h-8 rounded-lg border border-zinc-800 cursor-pointer hover:opacity-80 transition-opacity"
-                    referrerPolicy="no-referrer"
-                  />
-                  <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-zinc-900 ${
-                    presenceMap[friend]?.presence === 'online' ? 'bg-emerald-500' : 
-                    presenceMap[friend]?.presence === 'idle' ? 'bg-yellow-500' : 
-                    presenceMap[friend]?.presence === 'dnd' ? 'bg-red-500' : 'bg-zinc-500'
-                  }`}></div>
-                </div>
-                <div className="flex flex-col items-start min-w-0">
-                  <span className="text-sm text-zinc-300 font-medium truncate w-full text-left">{friend}</span>
-                  {presenceMap[friend]?.statusMessage && (
-                    <span className="text-[10px] text-zinc-500 truncate w-full text-left italic">{presenceMap[friend].statusMessage}</span>
-                  )}
-                </div>
+              <div className="flex items-center gap-3">
+                <img 
+                  src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${friend}`} 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    // We need to pass onProfileClick to Sidebar too
+                    onProfileClick(friend);
+                  }}
+                  className="w-8 h-8 rounded-lg border border-zinc-800 cursor-pointer hover:opacity-80 transition-opacity"
+                  referrerPolicy="no-referrer"
+                />
+                <span className="text-sm text-zinc-300 font-medium">{friend}</span>
               </div>
-              <ChevronRight className={`w-3 h-3 text-zinc-600 flex-shrink-0 ${activeRecipient === friend ? 'text-emerald-500' : ''}`} />
+              <ChevronRight className={`w-3 h-3 text-zinc-600 ${activeRecipient === friend ? 'text-emerald-500' : ''}`} />
             </button>
           ))}
         </div>
@@ -217,31 +175,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
                   onClick={() => onViewChange('private', chat)}
                   className={`w-full flex items-center justify-between p-2 rounded-xl transition-all ${activeRecipient === chat ? 'bg-zinc-800 border border-zinc-700' : 'hover:bg-zinc-800/50'}`}
                 >
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="relative flex-shrink-0">
-                      <img 
-                        src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${chat}`} 
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          onProfileClick(chat);
-                        }}
-                        className="w-8 h-8 rounded-lg border border-zinc-800 cursor-pointer hover:opacity-80 transition-opacity"
-                        referrerPolicy="no-referrer"
-                      />
-                      <div className={`absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border border-zinc-900 ${
-                        presenceMap[chat]?.presence === 'online' ? 'bg-emerald-500' : 
-                        presenceMap[chat]?.presence === 'idle' ? 'bg-yellow-500' : 
-                        presenceMap[chat]?.presence === 'dnd' ? 'bg-red-500' : 'bg-zinc-500'
-                      }`}></div>
-                    </div>
-                    <div className="flex flex-col items-start min-w-0">
-                      <span className="text-sm text-zinc-300 font-medium truncate w-full text-left">{chat}</span>
-                      {presenceMap[chat]?.statusMessage && (
-                        <span className="text-[10px] text-zinc-500 truncate w-full text-left italic">{presenceMap[chat].statusMessage}</span>
-                      )}
-                    </div>
+                  <div className="flex items-center gap-3">
+                    <img 
+                      src={`https://api.dicebear.com/7.x/avataaars/svg?seed=${chat}`} 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onProfileClick(chat);
+                      }}
+                      className="w-8 h-8 rounded-lg border border-zinc-800 cursor-pointer hover:opacity-80 transition-opacity"
+                      referrerPolicy="no-referrer"
+                    />
+                    <span className="text-sm text-zinc-300 font-medium">{chat}</span>
                   </div>
-                  <ChevronRight className={`w-3 h-3 text-zinc-600 flex-shrink-0 ${activeRecipient === chat ? 'text-emerald-500' : ''}`} />
+                  <ChevronRight className={`w-3 h-3 text-zinc-600 ${activeRecipient === chat ? 'text-emerald-500' : ''}`} />
                 </button>
               ))}
             </div>

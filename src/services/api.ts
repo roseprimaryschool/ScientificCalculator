@@ -15,11 +15,9 @@ export const ApiService = {
         friends: [],
         isAdmin: true,
         createdAt: Date.now(),
-        lastOnline: Date.now(),
-        presence: 'online'
+        lastOnline: Date.now()
       };
       ApiService.setCurrentUser(adminUser);
-      ApiService.logAdminAction('login', 'Admin', 'Admin logged in');
       return adminUser;
     }
 
@@ -47,32 +45,17 @@ export const ApiService = {
               profilePic: profile?.profilePic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
               friends: profile?.friends || [],
               createdAt: profile?.createdAt || now,
-              lastOnline: now,
-              bio: profile?.bio || '',
-              statusMessage: profile?.statusMessage || '',
-              theme: profile?.theme || 'default',
-              customBg: profile?.customBg || '',
-              presence: 'online'
+              lastOnline: now
             };
             
             // Update global user list for lookup
-            const globalProfile = {
+            GunService.users.get(username).put({
               username,
               profilePic: userData.profilePic,
               createdAt: userData.createdAt,
-              lastOnline: now,
-              bio: userData.bio,
-              statusMessage: userData.statusMessage,
-              theme: userData.theme,
-              customBg: userData.customBg,
-              presence: 'online'
-            };
-
-            GunService.users.get(username).put(globalProfile, (ack: any) => {
-              if (ack.err) console.error('Global profile update error:', ack.err);
+              lastOnline: now
             });
 
-            ApiService.logAdminAction('login', username, `${username} logged in`);
             ApiService.setCurrentUser(userData);
             resolve(userData);
           });
@@ -90,26 +73,15 @@ export const ApiService = {
           // Set user profile in Gun
           user.auth(username, password, () => {
              const now = Date.now();
-             const profileData = { 
-               profilePic, 
-               friends: [], 
-               createdAt: now, 
-               lastOnline: now,
-               bio: '',
-               statusMessage: '',
-               theme: 'default',
-               customBg: '',
-               presence: 'online'
-             };
-
-             user.get('profile').put(profileData, (ack: any) => {
-               if (ack.err) console.error('Profile put error:', ack.err);
-               
-               // Update global user list
-               GunService.users.get(username).put(profileData);
+             user.get('profile').put({ profilePic, friends: [], createdAt: now, lastOnline: now });
+             
+             // Update global user list
+             GunService.users.get(username).put({
+               username,
+               profilePic,
+               createdAt: now,
+               lastOnline: now
              });
-
-             ApiService.logAdminAction('signup', username, `New account created: ${username}`);
 
              const userData: User = {
                id: user.is.pub,
@@ -118,12 +90,7 @@ export const ApiService = {
                profilePic,
                friends: [],
                createdAt: now,
-               lastOnline: now,
-               bio: '',
-               statusMessage: '',
-               theme: 'default',
-               customBg: '',
-               presence: 'online'
+               lastOnline: now
              };
              ApiService.setCurrentUser(userData);
              resolve(userData);
@@ -133,21 +100,15 @@ export const ApiService = {
     });
   },
 
-  banUser: async (username: string, admin: string) => {
+  banUser: async (username: string) => {
     return new Promise((resolve) => {
-      GunService.banned.get(username).put(true, () => {
-        ApiService.logAdminAction('ban', username, `User banned by ${admin}`, admin);
-        resolve({ success: true });
-      });
+      GunService.banned.get(username).put(true, () => resolve({ success: true }));
     });
   },
 
-  unbanUser: async (username: string, admin: string) => {
+  unbanUser: async (username: string) => {
     return new Promise((resolve) => {
-      GunService.banned.get(username).put(false, () => {
-        ApiService.logAdminAction('unban', username, `User unbanned by ${admin}`, admin);
-        resolve({ success: true });
-      });
+      GunService.banned.get(username).put(false, () => resolve({ success: true }));
     });
   },
 
@@ -168,55 +129,9 @@ export const ApiService = {
     });
   },
 
-  updateUser: async (userId: string, updates: Partial<User>) => {
+  updateUser: async (userId: string, profilePic: string) => {
     return new Promise((resolve) => {
-      user.get('profile').put(updates, () => {
-        // Also update global user list
-        const currentUser = ApiService.getCurrentUser();
-        if (currentUser) {
-          GunService.users.get(currentUser.username).put(updates);
-          
-          // Log profile change
-          if (updates.bio !== undefined || updates.statusMessage !== undefined || updates.profilePic !== undefined) {
-             ApiService.logAdminAction('profile_update', currentUser.username, `Profile updated: ${Object.keys(updates).join(', ')}`);
-          }
-        }
-        resolve({ success: true });
-      });
-    });
-  },
-
-  updatePresence: async (username: string, presence: string) => {
-    const now = Date.now();
-    // Use callbacks to ensure propagation
-    GunService.presence.get(username).put({ presence, lastActive: now }, (ack: any) => {
-      if (ack.err) console.error('Presence sync error:', ack.err);
-    });
-    GunService.users.get(username).put({ presence, lastOnline: now }, (ack: any) => {
-      if (ack.err) console.error('User list presence sync error:', ack.err);
-    });
-  },
-
-  logAdminAction: (action: string, target: string, details: string, admin: string = 'System') => {
-    const logId = uuidv4();
-    GunService.logs.get(logId).put({
-      id: logId,
-      action,
-      target,
-      details,
-      admin,
-      timestamp: Date.now()
-    });
-  },
-
-  deleteMessage: async (chatId: string, messageId: string, admin: string, isLobby: boolean = false) => {
-    const chatNode = isLobby 
-      ? gun.get('calcchat_lobby_v2')
-      : gun.get('calcchat_private_v2').get(chatId);
-    
-    return new Promise((resolve) => {
-      chatNode.get(messageId).put(null, () => {
-        ApiService.logAdminAction('message_deletion', messageId, `Message deleted by ${admin}`, admin);
+      user.get('profile').put({ profilePic }, () => {
         resolve({ success: true });
       });
     });

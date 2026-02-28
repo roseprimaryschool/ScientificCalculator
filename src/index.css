@@ -3,81 +3,12 @@
 
 @theme {
   --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
-  --color-emerald-500: var(--theme-primary);
-  --color-emerald-600: var(--theme-primary-hover);
-  --color-zinc-950: var(--theme-bg);
-  --color-zinc-900: var(--theme-surface);
-  --color-zinc-800: var(--theme-border);
 }
 
 @layer base {
-  :root {
-    --theme-primary: #10b981; /* Default emerald-500 */
-    --theme-primary-hover: #059669; /* emerald-600 */
-    --theme-bg: #09090b; /* zinc-950 */
-    --theme-surface: #18181b; /* zinc-900 */
-    --theme-border: #27272a; /* zinc-800 */
-  }
-
-  .theme-midnight {
-    --theme-primary: #3b82f6; /* blue-500 */
-    --theme-primary-hover: #2563eb; /* blue-600 */
-    --theme-bg: #020617; /* slate-950 */
-    --theme-surface: #0f172a; /* slate-900 */
-    --theme-border: #1e293b; /* slate-800 */
-  }
-
-  .theme-sunset {
-    --theme-primary: #f97316; /* orange-500 */
-    --theme-primary-hover: #ea580c; /* orange-600 */
-    --theme-bg: #0c0a09; /* stone-950 */
-    --theme-surface: #1c1917; /* stone-900 */
-    --theme-border: #292524; /* stone-800 */
-  }
-
-  .theme-lavender {
-    --theme-primary: #8b5cf6; /* violet-500 */
-    --theme-primary-hover: #7c3aed; /* violet-600 */
-    --theme-bg: #0a0514; /* custom dark purple */
-    --theme-surface: #130a24;
-    --theme-border: #1e1138;
-  }
-
-  .theme-crimson {
-    --theme-primary: #ef4444; /* red-500 */
-    --theme-primary-hover: #dc2626; /* red-600 */
-    --theme-bg: #0a0000;
-    --theme-surface: #1a0000;
-    --theme-border: #2a0000;
-  }
-
   body {
-    @apply text-zinc-100 antialiased;
+    @apply bg-zinc-950 text-zinc-100 antialiased;
     font-feature-settings: "cv02", "cv03", "cv04", "cv11";
-    background-color: var(--theme-bg);
-  }
-
-  .theme-wrapper {
-    background-color: var(--theme-bg);
-    background-image: var(--custom-bg);
-    background-size: cover;
-    background-position: center;
-    background-attachment: fixed;
-    transition: background-color 0.3s ease;
-  }
-
-  .theme-wrapper.has-custom-bg::before {
-    content: '';
-    position: absolute;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.4); /* Overlay for readability */
-    pointer-events: none;
-    z-index: 0;
-  }
-
-  .theme-wrapper > * {
-    position: relative;
-    z-index: 1;
   }
 }
 
