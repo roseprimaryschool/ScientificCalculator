@@ -66,7 +66,7 @@ export const Settings: React.FC<SettingsProps> = ({ currentUser, onUpdate }) => 
   };
 
   return (
-    <div className="flex-1 bg-zinc-950 p-8 flex flex-col items-center">
+    <div className="h-full w-full overflow-y-auto bg-transparent p-4 sm:p-8 pb-24 flex flex-col items-center">
       <div className="w-full max-w-2xl">
         <h2 className="text-3xl font-bold text-white mb-8">Account Settings</h2>
 

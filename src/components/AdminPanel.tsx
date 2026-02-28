@@ -95,8 +95,8 @@ export const AdminPanel: React.FC<AdminPanelProps> = ({ onLogout, onBackToChat }
   };
 
   return (
-    <div className="flex flex-col h-full bg-transparent text-white p-8">
-      <div className="flex items-center justify-between mb-12">
+    <div className="flex flex-col h-full overflow-y-auto bg-transparent text-white p-4 sm:p-8 pb-24">
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 mb-12">
         <div className="flex items-center gap-4">
           <div className="p-3 bg-red-500/10 rounded-2xl border border-red-500/20">
             <Shield className="w-8 h-8 text-red-500" />
