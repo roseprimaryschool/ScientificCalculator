@@ -1,44 +1,71 @@
 import { User, Message } from '../types';
+import { gun, user, GunService } from './gun';
+import { v4 as uuidv4 } from 'uuid';
 
+// Gun.js uses callbacks, so we'll wrap them in Promises for our ApiService
 export const ApiService = {
   login: async (username: string, password: string): Promise<User> => {
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password })
+    return new Promise((resolve, reject) => {
+      user.auth(username, password, (ack: any) => {
+        if (ack.err) {
+          reject(new Error(ack.err));
+        } else {
+          // Fetch user profile from Gun
+          user.get('profile').once((profile: any) => {
+            const userData: User = {
+              id: user.is.pub,
+              username: username,
+              passwordHash: '', // We don't store password in plain text
+              profilePic: profile?.profilePic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${username}`,
+              friends: profile?.friends || []
+            };
+            ApiService.setCurrentUser(userData);
+            resolve(userData);
+          });
+        }
+      });
     });
-    if (!res.ok) throw new Error('Login failed');
-    return res.json();
   },
 
   signup: async (username: string, password: string, profilePic: string): Promise<User> => {
-    const res = await fetch('/api/auth/signup', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, profilePic })
+    return new Promise((resolve, reject) => {
+      user.create(username, password, (ack: any) => {
+        if (ack.err) {
+          reject(new Error(ack.err));
+        } else {
+          // Set user profile in Gun
+          user.auth(username, password, () => {
+             user.get('profile').put({ profilePic, friends: [] });
+             const userData: User = {
+               id: user.is.pub,
+               username: username,
+               passwordHash: '',
+               profilePic,
+               friends: []
+             };
+             ApiService.setCurrentUser(userData);
+             resolve(userData);
+          });
+        }
+      });
     });
-    if (!res.ok) throw new Error('Signup failed');
-    return res.json();
   },
 
   addFriend: async (userId: string, friendUsername: string) => {
-    const res = await fetch('/api/friends/add', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, friendUsername })
+    // In Gun, we'll just add to our local friends list and sync it
+    return new Promise((resolve) => {
+      user.get('profile').get('friends').set(friendUsername, () => {
+        resolve({ success: true });
+      });
     });
-    if (!res.ok) throw new Error('Failed to add friend');
-    return res.json();
   },
 
   updateUser: async (userId: string, profilePic: string) => {
-    const res = await fetch('/api/user/update', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ userId, profilePic })
+    return new Promise((resolve) => {
+      user.get('profile').put({ profilePic }, () => {
+        resolve({ success: true });
+      });
     });
-    if (!res.ok) throw new Error('Update failed');
-    return res.json();
   },
 
   getIsUnlocked: (): boolean => {

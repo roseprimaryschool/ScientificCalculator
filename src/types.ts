@@ -15,6 +15,7 @@ export interface Reaction {
 export interface Message {
   id: string;
   sender: string;
+  sender_pic?: string;
   text: string;
   timestamp: number;
   reactions: Reaction[];

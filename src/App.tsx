@@ -76,7 +76,10 @@ export default function App() {
             className="h-full"
           >
             {activeView === 'settings' ? (
-              <Settings currentUser={currentUser} onUpdate={setCurrentUser} />
+              <Settings currentUser={currentUser} onUpdate={(u) => {
+                setCurrentUser(u);
+                ApiService.setCurrentUser(u);
+              }} />
             ) : (
               <ChatView 
                 currentUser={currentUser} 

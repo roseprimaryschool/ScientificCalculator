@@ -39,7 +39,7 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isOwn, onReac
       <div className={`flex max-w-[80%] ${isOwn ? 'flex-row-reverse' : 'flex-row'} items-end gap-2`}>
         {!isOwn && (
           <img 
-            src={profilePic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${message.sender}`} 
+            src={profilePic || message.sender_pic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${message.sender}`} 
             alt={message.sender}
             className="w-8 h-8 rounded-full border border-zinc-800 bg-zinc-900"
             referrerPolicy="no-referrer"

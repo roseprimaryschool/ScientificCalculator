@@ -2,6 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { User, Message } from '../types';
 import { MessageItem } from './MessageItem';
 import { Send, Hash, User as UserIcon } from 'lucide-react';
+import { gun, GunService } from '../services/gun';
+import { v4 as uuidv4 } from 'uuid';
 
 interface ChatViewProps {
   currentUser: User;
@@ -13,30 +15,38 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputText, setInputText] = useState('');
   const scrollRef = useRef<HTMLDivElement>(null);
-  const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const ws = new WebSocket(`${protocol}//${window.location.host}`);
-    wsRef.current = ws;
+    // Gun.js real-time listener
+    const chatNode = recipient 
+      ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
+      : gun.get('calcchat_lobby_v2');
 
-    ws.onopen = () => {
-      ws.send(JSON.stringify({ type: 'auth', userId: currentUser.id }));
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      if (data.type === 'history') {
-        setMessages(data.messages);
-      } else if (data.type === 'new_message') {
-        setMessages(prev => [...prev, data.message]);
-      } else if (data.type === 'reaction_update') {
-        setMessages(prev => prev.map(m => m.id === data.messageId ? { ...m, reactions: data.reactions } : m));
+    const unsubscribe = chatNode.map().on((msg: any, id: string) => {
+      if (msg && msg.text) {
+        setMessages(prev => {
+          // Prevent duplicates
+          if (prev.some(m => m.id === id)) return prev;
+          const newMsg: Message = {
+            id,
+            sender: msg.sender,
+            sender_pic: msg.sender_pic,
+            text: msg.text,
+            timestamp: msg.timestamp,
+            reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
+            recipient: msg.recipient
+          };
+          return [...prev, newMsg].sort((a, b) => a.timestamp - b.timestamp);
+        });
       }
-    };
+    });
 
-    return () => ws.close();
-  }, [currentUser.id]);
+    return () => {
+      // Gun doesn't have a direct "off" for map().on() in some versions, 
+      // but we can clear the state when switching rooms
+      setMessages([]);
+    };
+  }, [recipient, currentUser.username]);
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -44,31 +54,52 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     }
   }, [messages, recipient]);
 
-  const filteredMessages = messages.filter(m => {
-    if (!recipient) return !m.recipient; // Lobby
-    return (m.sender === currentUser.username && m.recipient === recipient) ||
-           (m.sender === recipient && m.recipient === currentUser.username);
-  });
-
   const handleSend = (e: React.FormEvent) => {
     e.preventDefault();
-    if (!inputText.trim() || !wsRef.current) return;
+    if (!inputText.trim()) return;
 
-    wsRef.current.send(JSON.stringify({
-      type: 'chat',
+    const chatNode = recipient 
+      ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
+      : gun.get('calcchat_lobby_v2');
+
+    const msgId = uuidv4();
+    chatNode.get(msgId).put({
+      sender: currentUser.username,
+      sender_pic: currentUser.profilePic,
       text: inputText,
-      recipientName: recipient
-    }));
+      timestamp: Date.now(),
+      recipient: recipient || '',
+      reactions: '[]'
+    });
+
     setInputText('');
   };
 
   const handleReact = (messageId: string, emoji: string) => {
-    if (!wsRef.current) return;
-    wsRef.current.send(JSON.stringify({
-      type: 'reaction',
-      messageId,
-      emoji
-    }));
+    const chatNode = recipient 
+      ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
+      : gun.get('calcchat_lobby_v2');
+
+    chatNode.get(messageId).once((msg: any) => {
+      if (!msg) return;
+      const reactions = msg.reactions ? JSON.parse(msg.reactions) : [];
+      const reactionIndex = reactions.findIndex((r: any) => r.emoji === emoji);
+
+      if (reactionIndex > -1) {
+        if (!reactions[reactionIndex].users.includes(currentUser.username)) {
+          reactions[reactionIndex].users.push(currentUser.username);
+          reactions[reactionIndex].count += 1;
+        }
+      } else {
+        reactions.push({
+          emoji,
+          count: 1,
+          users: [currentUser.username]
+        });
+      }
+
+      chatNode.get(messageId).get('reactions').put(JSON.stringify(reactions));
+    });
   };
 
   return (
@@ -87,7 +118,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide"
       >
-        {filteredMessages.map((msg: any) => {
+        {messages.map((msg: any) => {
           return (
             <div key={msg.id} onClick={() => !recipient && msg.sender !== currentUser.username && onUserClick(msg.sender)}>
               <MessageItem
