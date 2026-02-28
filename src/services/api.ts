@@ -188,8 +188,13 @@ export const ApiService = {
 
   updatePresence: async (username: string, presence: string) => {
     const now = Date.now();
-    GunService.presence.get(username).put({ presence, lastActive: now });
-    GunService.users.get(username).put({ presence, lastOnline: now });
+    // Use callbacks to ensure propagation
+    GunService.presence.get(username).put({ presence, lastActive: now }, (ack: any) => {
+      if (ack.err) console.error('Presence sync error:', ack.err);
+    });
+    GunService.users.get(username).put({ presence, lastOnline: now }, (ack: any) => {
+      if (ack.err) console.error('User list presence sync error:', ack.err);
+    });
   },
 
   logAdminAction: (action: string, target: string, details: string, admin: string = 'System') => {

@@ -56,7 +56,7 @@ export default function App() {
     window.addEventListener('keydown', updateActivity);
     window.addEventListener('click', updateActivity);
 
-    // Heartbeat: Update Gun every 30 seconds to keep presence alive
+    // Heartbeat: Update Gun every 15 seconds to keep presence alive and sync healthy
     const heartbeat = setInterval(() => {
       const now = Date.now();
       const diff = now - lastActivity;
@@ -70,7 +70,7 @@ export default function App() {
           ApiService.updatePresence(currentUser.username, 'idle');
         }
       }
-    }, 30000);
+    }, 15000);
 
     return () => {
       window.removeEventListener('mousemove', updateActivity);

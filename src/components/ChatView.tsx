@@ -18,14 +18,53 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [recipientData, setRecipientData] = useState<{ presence?: string, statusMessage?: string } | null>(null);
   const [isConnected, setIsConnected] = useState(true);
+  const [isAuth, setIsAuth] = useState(false);
+  const [connectionAttempts, setConnectionAttempts] = useState(0);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
+    // Track auth status
+    const checkAuth = () => {
+      setIsAuth(!!gunUser.is);
+    };
+    checkAuth();
+    gun.on('auth', checkAuth);
+    
+    let consecutiveOffline = 0;
+    
+    // Immediate connection tracking via Gun events
+    const onHi = () => {
+      consecutiveOffline = 0;
+      setIsConnected(true);
+    };
+    const onBye = () => {
+      // Don't immediately set to false, let the interval check it
+    };
+    
+    gun.on('hi', onHi);
+    gun.on('bye', onBye);
+
     const checkConnection = setInterval(() => {
-      setIsConnected(GunService.isConnected());
-    }, 5000);
-    return () => clearInterval(checkConnection);
+      const connected = GunService.isConnected();
+      if (connected) {
+        consecutiveOffline = 0;
+        setIsConnected(true);
+      } else {
+        consecutiveOffline++;
+        // Only show "Connecting" if we've been offline for at least 3 checks (9 seconds)
+        // This prevents the UI from flickering on minor network blips
+        if (consecutiveOffline >= 3) {
+          setIsConnected(false);
+        }
+      }
+    }, 3000);
+    
+    return () => {
+      clearInterval(checkConnection);
+      // Gun.js doesn't have a simple .off() for global events like 'hi', 
+      // but we can at least stop the interval
+    };
   }, []);
 
   useEffect(() => {
@@ -230,7 +269,20 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         {!isConnected && (
           <div className="ml-auto flex items-center gap-2 px-3 py-1 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
             <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
-            <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider">Connecting to Network...</span>
+            <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider">Network Syncing...</span>
+            <button 
+              onClick={() => window.location.reload()}
+              className="text-[9px] bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-600 px-1.5 py-0.5 rounded transition-colors"
+            >
+              Refresh
+            </button>
+          </div>
+        )}
+        
+        {isConnected && !isAuth && (
+          <div className="ml-auto flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-lg">
+            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
+            <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Verifying Identity...</span>
           </div>
         )}
       </div>
