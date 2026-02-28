@@ -2,19 +2,22 @@ import Gun from 'gun';
 import 'gun/sea'; // Security, Encryption, Authorization
 import 'gun/axe'; // Performance
 
-// Public relay peers for Gun - using multiple reliable ones for better sync
+// Public relay peers for Gun - using a more robust and diverse set
 const peers = [
   'https://gun-manhattan.herokuapp.com/gun',
   'https://gun-us.herokuapp.com/gun',
   'https://gun-eu.herokuapp.com/gun',
   'https://gunjs.herokuapp.com/gun',
-  'https://www.raygun.live/gun'
+  'https://www.raygun.live/gun',
+  'https://peer.wall.org/gun',
+  'https://gun-server.herokuapp.com/gun'
 ];
 
 export const gun = Gun({ 
   peers,
   localStorage: true,
-  radisk: true // Better storage management
+  radisk: true,
+  retry: 1000 // Faster retry for better connectivity
 });
 export const user = gun.user().recall({ sessionStorage: true });
 

@@ -45,15 +45,13 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
     usersToTrack.forEach(username => {
       GunService.users.get(username).on((data: any) => {
-        if (data) {
-          setPresenceMap(prev => ({
-            ...prev,
-            [username]: { 
-              presence: data.presence || 'offline',
-              statusMessage: data.statusMessage || ''
-            }
-          }));
-        }
+        setPresenceMap(prev => ({
+          ...prev,
+          [username]: { 
+            presence: data?.presence || 'offline',
+            statusMessage: data?.statusMessage || ''
+          }
+        }));
       });
     });
 

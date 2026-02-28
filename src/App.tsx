@@ -45,7 +45,9 @@ export default function App() {
 
     const updateActivity = () => {
       setLastActivity(Date.now());
-      if (currentUser.presence !== 'online' && currentUser.presence !== 'dnd') {
+      // Always update Gun on activity to ensure the "online" status propagates
+      // even if the local state already says "online"
+      if (currentUser.presence !== 'dnd') {
         ApiService.updatePresence(currentUser.username, 'online');
       }
     };
@@ -54,22 +56,27 @@ export default function App() {
     window.addEventListener('keydown', updateActivity);
     window.addEventListener('click', updateActivity);
 
-    const interval = setInterval(() => {
+    // Heartbeat: Update Gun every 30 seconds to keep presence alive
+    const heartbeat = setInterval(() => {
       const now = Date.now();
       const diff = now - lastActivity;
 
-      if (diff > 300000) { // 5 minutes
-        if (currentUser.presence !== 'idle') {
+      if (diff < 300000) { // If active in last 5 mins
+        if (currentUser.presence !== 'dnd') {
+          ApiService.updatePresence(currentUser.username, 'online');
+        }
+      } else {
+        if (currentUser.presence !== 'idle' && currentUser.presence !== 'dnd') {
           ApiService.updatePresence(currentUser.username, 'idle');
         }
       }
-    }, 60000);
+    }, 30000);
 
     return () => {
       window.removeEventListener('mousemove', updateActivity);
       window.removeEventListener('keydown', updateActivity);
       window.removeEventListener('click', updateActivity);
-      clearInterval(interval);
+      clearInterval(heartbeat);
     };
   }, [currentUser, lastActivity]);
 
