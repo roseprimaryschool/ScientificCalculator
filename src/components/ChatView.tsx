@@ -113,29 +113,76 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     });
 
     // Listen for Imposter state
-    GunService.imposter.on((data: any) => {
+    const imposterNode = GunService.imposter;
+    
+    imposterNode.on((data: any) => {
       if (data) {
-        try {
-          setImposterState({
-            status: data.status || 'inactive',
-            players: typeof data.players === 'string' ? JSON.parse(data.players) : (Array.isArray(data.players) ? data.players : []),
-            imposter: data.imposter || '',
-            topic: data.topic || '',
-            imposterTopic: data.imposterTopic || '',
-            turnIndex: typeof data.turnIndex === 'number' ? data.turnIndex : parseInt(data.turnIndex || '0'),
-            votes: typeof data.votes === 'string' ? JSON.parse(data.votes) : (typeof data.votes === 'object' && data.votes !== null ? data.votes : {})
-          });
-        } catch (e) {
-          console.error('Error parsing imposter state:', e);
-        }
+        setImposterState(prev => ({
+          ...prev,
+          status: data.status || 'inactive',
+          imposter: data.imposter || '',
+          topic: data.topic || '',
+          imposterTopic: data.imposterTopic || '',
+          turnIndex: typeof data.turnIndex === 'number' ? data.turnIndex : parseInt(data.turnIndex || '0'),
+          players: prev?.players || [],
+          votes: prev?.votes || {}
+        }));
+      } else {
+        setImposterState(null);
       }
+    });
+
+    // Listen for players separately
+    imposterNode.get('players_list').map().on((val: any, user: string) => {
+      setImposterState(prev => {
+        const players = prev?.players || [];
+        if (val) {
+          if (!players.includes(user)) {
+            return { ...prev!, players: [...players, user] };
+          }
+        } else {
+          return { ...prev!, players: players.filter(p => p !== user) };
+        }
+        return prev;
+      });
+    });
+
+    // Listen for votes separately
+    imposterNode.get('votes_list').map().on((target: any, voter: string) => {
+      setImposterState(prev => {
+        const votes = prev?.votes || {};
+        if (target) {
+          return { ...prev!, votes: { ...votes, [voter]: target } };
+        } else {
+          const newVotes = { ...votes };
+          delete newVotes[voter];
+          return { ...prev!, votes: newVotes };
+        }
+      });
     });
 
     return () => {
       GunService.wordle.off();
-      GunService.imposter.off();
+      imposterNode.off();
+      imposterNode.get('players_list').off();
+      imposterNode.get('votes_list').off();
     };
   }, []);
+
+  useEffect(() => {
+    if (imposterState?.status === 'voting' && imposterState.players.length > 0) {
+      const voteCount = Object.keys(imposterState.votes).length;
+      if (voteCount === imposterState.players.length) {
+        // Only the imposter or the first player in the list processes the votes to avoid multiple messages
+        // Actually, anyone can process it but we should guard it.
+        // Let's use a simple guard: only the first player in the alphabetical list processes it.
+        const sortedPlayers = [...imposterState.players].sort();
+        if (currentUser.username === sortedPlayers[0]) {
+          processImposterVotes(imposterState.votes);
+        }
+      }
+    }
+  }, [imposterState?.votes, imposterState?.status, imposterState?.players, currentUser.username]);
 
   useEffect(() => {
     // Track auth status
@@ -326,16 +373,31 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         if (imposterState && imposterState.status !== 'inactive') {
           sendSystemMessage('An Imposter game is already in progress!');
         } else {
-          GunService.imposter.put({
+          // Reset the entire game state
+          const imposterNode = GunService.imposter;
+          imposterNode.put({
             status: 'lobby',
-            players: JSON.stringify([]),
             imposter: '',
             topic: '',
             imposterTopic: '',
             turnIndex: 0,
-            votes: JSON.stringify({}),
             startTime: Date.now()
           });
+          // Clear sub-nodes
+          imposterNode.get('players_list').put(null);
+          imposterNode.get('votes_list').put(null);
+          
+          // Reset local state immediately for the starter
+          setImposterState({
+            status: 'lobby',
+            players: [],
+            imposter: '',
+            topic: '',
+            imposterTopic: '',
+            turnIndex: 0,
+            votes: {}
+          });
+
           sendSystemMessage('🕵️ **A new Imposter game is forming!** Type `/imposter join` to participate.');
         }
         setInputText('');
@@ -344,15 +406,23 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
       if (command === '/imposter join') {
         if (!imposterState || imposterState.status !== 'lobby') {
-          sendSystemMessage('No Imposter game is currently forming.');
+          // If state is null, it might be syncing. Try to fetch once.
+          GunService.imposter.once((data: any) => {
+            if (data && data.status === 'lobby') {
+              sendSystemMessage('Game state synced. Please try joining again!');
+            } else {
+              sendSystemMessage('No Imposter game is currently forming.');
+            }
+          });
         } else if (imposterState.players.includes(currentUser.username)) {
           sendSystemMessage('You’re already in the game.');
         } else {
-          const newPlayers = [...imposterState.players, currentUser.username];
-          GunService.imposter.get('players').put(JSON.stringify(newPlayers));
-          sendSystemMessage(`✅ **${currentUser.username}** joined the Imposter game! (${newPlayers.length} players)`);
-          if (newPlayers.length >= 3) {
-            sendSystemMessage('Type `/imposter start` to begin the game!');
+          GunService.imposter.get('players_list').get(currentUser.username).put(true);
+          sendSystemMessage(`✅ **${currentUser.username}** joined the Imposter game!`);
+          
+          // If it's the first player joining, ensure the status is set correctly
+          if (imposterState.players.length === 0) {
+            GunService.imposter.get('status').put('lobby');
           }
         }
         setInputText('');
@@ -363,7 +433,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         if (!imposterState || imposterState.status !== 'lobby') {
           sendSystemMessage('No Imposter game is currently forming.');
         } else if (imposterState.players.length < 3) {
-          sendSystemMessage('The game can only start when at least 3 players have joined.');
+          sendSystemMessage(`The game needs at least 3 players. Current: ${imposterState.players.length}`);
         } else {
           startImposterGame();
         }
@@ -373,6 +443,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
       if (command === '/imposter cancel') {
         GunService.imposter.put({ status: 'inactive' });
+        GunService.imposter.get('players_list').put(null);
+        GunService.imposter.get('votes_list').put(null);
         sendSystemMessage('🕵️ **Imposter game cancelled.**');
         setInputText('');
         return;
@@ -387,14 +459,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         } else if (!imposterState.players.includes(currentUser.username)) {
           sendSystemMessage('Only players in the game can vote.');
         } else {
-          const newVotes = { ...imposterState.votes, [currentUser.username]: target };
-          GunService.imposter.get('votes').put(JSON.stringify(newVotes));
+          GunService.imposter.get('votes_list').get(currentUser.username).put(target);
           sendSystemMessage(`🗳️ **${currentUser.username}** has voted!`);
           
-          // Check if everyone has voted
-          if (Object.keys(newVotes).length === imposterState.players.length) {
-            processImposterVotes(newVotes);
-          }
+          // Check if everyone has voted (will be handled in the listener for final processing)
         }
         setInputText('');
         return;
@@ -469,9 +537,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       topic: topicPair.crew,
       imposterTopic: topicPair.imposter,
       turnIndex: 0,
-      votes: JSON.stringify({}),
       startTime: Date.now()
     });
+    // Clear votes for the new game
+    GunService.imposter.get('votes_list').put(null);
 
     sendSystemMessage('🕵️ **The Imposter game is starting!** Roles have been assigned.');
 
@@ -552,6 +621,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     
     setTimeout(() => {
       GunService.imposter.put({ status: 'inactive' });
+      GunService.imposter.get('players_list').put(null);
+      GunService.imposter.get('votes_list').put(null);
     }, 5000);
   };
 
