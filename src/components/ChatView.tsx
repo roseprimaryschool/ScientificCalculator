@@ -4,6 +4,7 @@ import { MessageItem } from './MessageItem';
 import { Send, Hash, User as UserIcon, Image as ImageIcon, X } from 'lucide-react';
 import { gun, user as gunUser, GunService } from '../services/gun';
 import { ApiService } from '../services/api';
+import { socketService } from '../services/socket';
 import { v4 as uuidv4 } from 'uuid';
 
 const WORDLE_WORDS = [
@@ -65,6 +66,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [isAuth, setIsAuth] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [wordleState, setWordleState] = useState<{ active: boolean, word: string, guesses: number } | null>(null);
+  const [roleInfo, setRoleInfo] = useState<{ role: string, topic: string } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -148,49 +150,105 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   }, [recipient]);
 
   useEffect(() => {
-    // Gun.js real-time listener
-    const chatNode = recipient 
-      ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
-      : gun.get('calcchat_lobby_v2');
-
-    chatNode.map().on((msg: any, id: string) => {
-      if (msg === null) {
-        setMessages(prev => prev.filter(m => m.id !== id));
-        return;
-      }
-
-      if (msg && (msg.text || msg.image)) {
+    if (!recipient) {
+      socketService.onMessage((data) => {
         setMessages(prev => {
-          // Prevent duplicates
-          if (prev.some(m => m.id === id)) return prev;
-          
+          if (prev.some(m => m.id === data.id)) return prev;
           const newMsg: Message = {
-            id,
-            sender: msg.sender,
-            sender_pic: msg.sender_pic,
-            text: msg.text || '',
-            timestamp: msg.timestamp || Date.now(),
-            reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
-            recipient: msg.recipient,
-            image: msg.image
+            id: data.id || uuidv4(),
+            sender: data.username,
+            sender_pic: data.sender_pic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${data.username}`,
+            text: data.message,
+            timestamp: Date.now(),
+            reactions: [],
+            recipient: '',
+            isGameMessage: data.isGameMessage,
           };
-
-          // If it's a private message and we're the recipient, add to recent chats
-          if (recipient && msg.sender !== currentUser.username) {
-            gunUser.get('profile').get('recentChats').get(msg.sender).put(true);
-          }
-
-          const updated = [...prev, newMsg].sort((a, b) => a.timestamp - b.timestamp);
-          // Keep only last 200 messages for performance
-          return updated.slice(-200);
+          return [...prev, newMsg].slice(-200);
         });
-      }
-    });
+      });
 
-    return () => {
-      chatNode.off();
+      socketService.onSystemMessage((message) => {
+        setMessages(prev => {
+          const newMsg: Message = {
+            id: uuidv4(),
+            sender: 'System',
+            sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=System',
+            text: message,
+            timestamp: Date.now(),
+            reactions: [],
+            recipient: '',
+          };
+          return [...prev, newMsg].slice(-200);
+        });
+      });
+
+      socketService.onRoleAssignment((data) => {
+        setRoleInfo(data);
+        // Also add a private system message for the role
+        setMessages(prev => {
+          const newMsg: Message = {
+            id: uuidv4(),
+            sender: 'Game Master',
+            sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=GM',
+            text: `**ROLE ASSIGNED!**\n\nYou are a **${data.role}**.\nYour topic is: **${data.topic}**`,
+            timestamp: Date.now(),
+            reactions: [],
+            recipient: currentUser.username,
+          };
+          return [...prev, newMsg].slice(-200);
+        });
+      });
+
+      socketService.onGameReset(() => {
+        setRoleInfo(null);
+      });
+    }
+  }, [recipient, currentUser.username]);
+
+  useEffect(() => {
+    // Gun.js real-time listener
+    if (recipient) {
+      const chatNode = gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'));
+      chatNode.map().on((msg: any, id: string) => {
+        if (msg === null) {
+          setMessages(prev => prev.filter(m => m.id !== id));
+          return;
+        }
+
+        if (msg && (msg.text || msg.image)) {
+          setMessages(prev => {
+            if (prev.some(m => m.id === id)) return prev;
+            
+            const newMsg: Message = {
+              id,
+              sender: msg.sender,
+              sender_pic: msg.sender_pic,
+              text: msg.text || '',
+              timestamp: msg.timestamp || Date.now(),
+              reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
+              recipient: msg.recipient,
+              image: msg.image
+            };
+
+            if (msg.sender !== currentUser.username) {
+              gunUser.get('profile').get('recentChats').get(msg.sender).put(true);
+            }
+
+            const updated = [...prev, newMsg].sort((a, b) => a.timestamp - b.timestamp);
+            return updated.slice(-200);
+          });
+        }
+      });
+
+      return () => {
+        chatNode.off();
+        setMessages([]);
+      };
+    } else {
+      // Lobby messages are handled by socket.io now
       setMessages([]);
-    };
+    }
   }, [recipient, currentUser.username]);
 
   useEffect(() => {
@@ -204,6 +262,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     if (!inputText.trim() && !selectedImage) return;
 
     const trimmedInput = inputText.trim();
+
+    if (!recipient) {
+      socketService.sendMessage(trimmedInput);
+      setInputText('');
+      return;
+    }
 
     // Handle Wordle Commands
     if (!recipient && trimmedInput.toLowerCase().startsWith('/wordle')) {
@@ -487,6 +551,18 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             </div>
             <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-900/40">
               <span className="text-white font-bold text-xs">W</span>
+            </div>
+          </div>
+        )}
+
+        {!recipient && roleInfo && (
+          <div className="ml-auto flex items-center gap-3 px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-2xl animate-in fade-in slide-in-from-right-4">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">{roleInfo.role}</span>
+              <span className="text-[9px] text-red-400/70 font-mono">Topic: {roleInfo.topic}</span>
+            </div>
+            <div className="w-8 h-8 rounded-lg bg-red-500 flex items-center justify-center shadow-lg shadow-red-900/40">
+              <span className="text-white font-bold text-xs">!</span>
             </div>
           </div>
         )}

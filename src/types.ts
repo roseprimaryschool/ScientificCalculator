@@ -32,6 +32,7 @@ export interface Message {
   reactions: Reaction[];
   recipient?: string; // undefined for lobby
   image?: string; // Base64 or URL
+  isGameMessage?: boolean;
 }
 
 export interface AdminLog {

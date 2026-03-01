@@ -18,6 +18,17 @@ const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '💯'
 
 export const MessageItem: React.FC<MessageItemProps> = ({ message, isOwn, isAdmin, onReact, onDelete, onProfileClick, profilePic }) => {
   const [showReactions, setShowReactions] = useState(false);
+  const isSystem = message.sender === 'System' || message.sender === 'Game Master' || message.sender === 'Wordle Bot';
+
+  if (isSystem) {
+    return (
+      <div className="flex justify-center w-full my-2">
+        <div className="bg-zinc-800/50 border border-zinc-700/50 rounded-full px-6 py-1.5 text-xs text-zinc-400 font-medium backdrop-blur-sm shadow-sm text-center max-w-[90%]">
+          <Markdown>{message.text}</Markdown>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className={`flex w-full mb-4 ${isOwn ? 'justify-end' : 'justify-start'}`}>
@@ -43,9 +54,17 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isOwn, isAdmi
             {!isOwn && (
               <div 
                 onClick={() => onProfileClick(message.sender)}
-                className="text-[10px] text-zinc-500 mb-1 font-bold hover:text-emerald-500 cursor-pointer"
+                className="text-[10px] text-zinc-500 mb-1 font-bold hover:text-emerald-500 cursor-pointer flex items-center gap-2"
               >
                 {message.sender}
+                {message.isGameMessage && (
+                  <span className="bg-red-500/20 text-red-500 px-1 rounded text-[8px] uppercase tracking-tighter">Game Turn</span>
+                )}
+              </div>
+            )}
+            {isOwn && message.isGameMessage && (
+              <div className="text-[10px] text-emerald-200/50 mb-1 font-bold flex items-center justify-end gap-2">
+                <span className="bg-white/20 text-white px-1 rounded text-[8px] uppercase tracking-tighter">Game Turn</span>
               </div>
             )}
             {message.image && (

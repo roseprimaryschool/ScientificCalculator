@@ -9,6 +9,7 @@ import { UserProfileModal } from './components/UserProfileModal';
 import { User } from './types';
 import { ApiService } from './services/api';
 import { GunService } from './services/gun';
+import { socketService } from './services/socket';
 import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
@@ -94,6 +95,7 @@ export default function App() {
           alert('Your account has been banned.');
         } else {
           setCurrentUser(user);
+          socketService.connect(user.username, user.profilePic);
           if (user.isAdmin) setActiveView('admin');
         }
       });
@@ -108,12 +110,14 @@ export default function App() {
   const handleLogin = (user: User) => {
     setCurrentUser(user);
     ApiService.setCurrentUser(user);
+    socketService.connect(user.username, user.profilePic);
     if (user.isAdmin) setActiveView('admin');
   };
 
   const handleLogout = () => {
     if (currentUser) {
       ApiService.updatePresence(currentUser.username, 'offline');
+      socketService.disconnect();
     }
     setCurrentUser(null);
     ApiService.setCurrentUser(null);
