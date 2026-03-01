@@ -5,23 +5,25 @@ import 'gun/axe'; // Performance
 // Public relay peers for Gun - using a more robust and diverse set
 const peers = [
   'https://gun-manhattan.herokuapp.com/gun',
-  'https://gun-us.herokuapp.com/gun',
-  'https://gun-eu.herokuapp.com/gun',
   'https://gunjs.herokuapp.com/gun',
   'https://www.raygun.live/gun',
   'https://peer.wall.org/gun',
+  'https://gun-us.herokuapp.com/gun',
+  'https://gun-eu.herokuapp.com/gun',
   'https://gun-server.herokuapp.com/gun',
   'https://gun-amsterdam.herokuapp.com/gun',
-  'https://gun-sydney.herokuapp.com/gun'
+  'https://gun-sydney.herokuapp.com/gun',
+  'https://gun-relay.herokuapp.com/gun',
+  'https://gun-relay-us.herokuapp.com/gun'
 ];
 
 export const gun = Gun({ 
   peers,
   localStorage: true,
   radisk: true,
-  retry: 500, // Even faster retry for better connectivity
-  wait: 200, // Shorter wait for faster response
-  timeout: 5000 // Reasonable timeout for peer discovery
+  retry: 1000, // Slightly longer retry for better stability
+  wait: 100, // Shorter wait for faster response
+  timeout: 10000 // Longer timeout for peer discovery
 });
 export const user = gun.user().recall({ sessionStorage: true });
 

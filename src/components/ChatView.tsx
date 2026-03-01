@@ -85,6 +85,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [recipientData, setRecipientData] = useState<{ presence?: string, statusMessage?: string } | null>(null);
   const [isConnected, setIsConnected] = useState(true);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSyncing, setIsSyncing] = useState(false);
   const [isAuth, setIsAuth] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [wordleState, setWordleState] = useState<{ active: boolean, word: string, guesses: number } | null>(null);
@@ -271,11 +273,18 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
   useEffect(() => {
     // Gun.js real-time listener
+    setIsLoading(true);
     const chatNode = recipient 
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
       : gun.get('calcchat_lobby_v2');
 
+    // Set a timeout to stop loading if no messages arrive
+    const loadingTimeout = setTimeout(() => setIsLoading(false), 3000);
+
     chatNode.map().on((msg: any, id: string) => {
+      setIsLoading(false);
+      clearTimeout(loadingTimeout);
+      
       if (msg === null) {
         setMessages(prev => prev.filter(m => m.id !== id));
         return;
@@ -318,6 +327,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     return () => {
       chatNode.off();
       setMessages([]);
+      clearTimeout(loadingTimeout);
     };
   }, [recipient, currentUser.username]);
 
@@ -545,7 +555,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     }
 
     // Use a callback to ensure Gun processes the put
+    setIsSyncing(true);
     chatNode.get(msgId).put(msgData, (ack: any) => {
+      setIsSyncing(false);
       if (ack.err) {
         console.error('Gun.js send error:', ack.err);
         // Retry once after a short delay if it failed
@@ -866,7 +878,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
                 <span className="text-[10px] text-emerald-500 font-normal italic">"{recipientData.statusMessage}"</span>
               )}
             </h3>
-            <p className="text-zinc-500 text-xs">{recipient ? (recipientData?.presence || 'offline') : 'Everyone is here'}</p>
+            <div className="flex items-center gap-2">
+              <p className="text-zinc-500 text-xs">{recipient ? (recipientData?.presence || 'offline') : 'Everyone is here'}</p>
+              <div className="w-1 h-1 rounded-full bg-zinc-700" />
+              <div className="flex items-center gap-1.5">
+                <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
+                <span className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">
+                  {isConnected ? 'Live' : 'Syncing...'}
+                </span>
+              </div>
+            </div>
           </div>
         </div>
         
@@ -913,8 +934,24 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
       <div 
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide"
+        className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide relative"
       >
+        {isLoading && (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/20 backdrop-blur-[2px] z-10">
+            <div className="flex flex-col items-center gap-2">
+              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
+              <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">Loading History...</span>
+            </div>
+          </div>
+        )}
+
+        {messages.length === 0 && !isLoading && (
+          <div className="flex flex-col items-center justify-center h-full text-zinc-600 space-y-2 opacity-50">
+            <Hash className="w-12 h-12" />
+            <p className="text-sm font-medium">No messages yet. Start the conversation!</p>
+          </div>
+        )}
+
         {messages.map((msg: any) => {
           return (
             <div key={msg.id}>
@@ -974,9 +1011,18 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
           />
           <button
             type="submit"
-            className="bg-emerald-600 hover:bg-emerald-500 text-white p-3 rounded-xl transition-all active:scale-95 shadow-lg shadow-emerald-900/20"
+            disabled={(!inputText.trim() && !selectedImage) || isSyncing}
+            className={`p-3 rounded-xl transition-all active:scale-95 shadow-lg ${
+              (!inputText.trim() && !selectedImage) || isSyncing
+                ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
+                : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-900/20'
+            }`}
           >
-            <Send className="w-5 h-5" />
+            {isSyncing ? (
+              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Send className="w-5 h-5" />
+            )}
           </button>
         </div>
       </form>
