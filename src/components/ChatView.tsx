@@ -115,15 +115,19 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     // Listen for Imposter state
     GunService.imposter.on((data: any) => {
       if (data) {
-        setImposterState({
-          status: data.status || 'inactive',
-          players: data.players ? JSON.parse(data.players) : [],
-          imposter: data.imposter || '',
-          topic: data.topic || '',
-          imposterTopic: data.imposterTopic || '',
-          turnIndex: data.turnIndex || 0,
-          votes: data.votes ? JSON.parse(data.votes) : {}
-        });
+        try {
+          setImposterState({
+            status: data.status || 'inactive',
+            players: typeof data.players === 'string' ? JSON.parse(data.players) : (Array.isArray(data.players) ? data.players : []),
+            imposter: data.imposter || '',
+            topic: data.topic || '',
+            imposterTopic: data.imposterTopic || '',
+            turnIndex: typeof data.turnIndex === 'number' ? data.turnIndex : parseInt(data.turnIndex || '0'),
+            votes: typeof data.votes === 'string' ? JSON.parse(data.votes) : (typeof data.votes === 'object' && data.votes !== null ? data.votes : {})
+          });
+        } catch (e) {
+          console.error('Error parsing imposter state:', e);
+        }
       }
     });
 
@@ -218,7 +222,13 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             sender_pic: msg.sender_pic,
             text: msg.text || '',
             timestamp: msg.timestamp || Date.now(),
-            reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
+            reactions: (() => {
+              try {
+                return typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : (Array.isArray(msg.reactions) ? msg.reactions : []);
+              } catch (e) {
+                return [];
+              }
+            })(),
             recipient: msg.recipient,
             image: msg.image
           };
@@ -407,7 +417,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     };
 
     // If it's the Imposter game turn, advance the turn
-    if (!recipient && imposterState?.status === 'playing') {
+    if (!recipient && imposterState?.status === 'playing' && imposterState.players.includes(currentUser.username)) {
       const currentPlayer = imposterState.players[imposterState.turnIndex];
       if (currentUser.username === currentPlayer) {
         const nextTurn = imposterState.turnIndex + 1;
