@@ -64,4 +64,5 @@ export interface ImposterState {
   turnIndex: number;
   votes: Record<string, string>;
   startTime: number;
+  phaseEndTime?: number;
 }

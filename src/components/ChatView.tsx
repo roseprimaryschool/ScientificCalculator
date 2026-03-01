@@ -95,7 +95,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     topic: string,
     imposterTopic: string,
     turnIndex: number,
-    votes: Record<string, string>
+    votes: Record<string, string>,
+    startTime: number,
+    phaseEndTime?: number
   } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -117,16 +119,21 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     
     imposterNode.on((data: any) => {
       if (data) {
-        setImposterState(prev => ({
-          ...prev,
-          status: data.status || 'inactive',
-          imposter: data.imposter || '',
-          topic: data.topic || '',
-          imposterTopic: data.imposterTopic || '',
-          turnIndex: typeof data.turnIndex === 'number' ? data.turnIndex : parseInt(data.turnIndex || '0'),
-          players: prev?.players || [],
-          votes: prev?.votes || {}
-        }));
+        setImposterState(prev => {
+          const newState = {
+            ...prev,
+            status: data.status || 'inactive',
+            imposter: data.imposter || '',
+            topic: data.topic || '',
+            imposterTopic: data.imposterTopic || '',
+            turnIndex: typeof data.turnIndex === 'number' ? data.turnIndex : parseInt(data.turnIndex || '0'),
+            startTime: data.startTime || 0,
+            phaseEndTime: data.phaseEndTime || 0,
+            players: prev?.players || [],
+            votes: prev?.votes || {}
+          } as any;
+          return newState;
+        });
       } else {
         setImposterState(null);
       }
@@ -138,10 +145,12 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         const players = prev?.players || [];
         if (val) {
           if (!players.includes(user)) {
-            return { ...prev!, players: [...players, user] };
+            const newPlayers = [...players, user].sort();
+            return { ...prev!, players: newPlayers };
           }
         } else {
-          return { ...prev!, players: players.filter(p => p !== user) };
+          const newPlayers = players.filter(p => p !== user).sort();
+          return { ...prev!, players: newPlayers };
         }
         return prev;
       });
@@ -173,9 +182,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     if (imposterState?.status === 'voting' && imposterState.players.length > 0) {
       const voteCount = Object.keys(imposterState.votes).length;
       if (voteCount === imposterState.players.length) {
-        // Only the imposter or the first player in the list processes the votes to avoid multiple messages
-        // Actually, anyone can process it but we should guard it.
-        // Let's use a simple guard: only the first player in the alphabetical list processes it.
+        // Only the first player in the alphabetical list processes it to avoid multiple messages
         const sortedPlayers = [...imposterState.players].sort();
         if (currentUser.username === sortedPlayers[0]) {
           processImposterVotes(imposterState.votes);
@@ -183,6 +190,22 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       }
     }
   }, [imposterState?.votes, imposterState?.status, imposterState?.players, currentUser.username]);
+
+  useEffect(() => {
+    if (imposterState?.status === 'discussing' && imposterState.phaseEndTime) {
+      const checkDiscussion = setInterval(() => {
+        if (Date.now() >= imposterState.phaseEndTime!) {
+          clearInterval(checkDiscussion);
+          // Only the first player in the alphabetical list processes it
+          const sortedPlayers = [...imposterState.players].sort();
+          if (currentUser.username === sortedPlayers[0]) {
+            startImposterVoting();
+          }
+        }
+      }, 1000);
+      return () => clearInterval(checkDiscussion);
+    }
+  }, [imposterState?.status, imposterState?.phaseEndTime, imposterState?.players, currentUser.username]);
 
   useEffect(() => {
     // Track auth status
@@ -395,7 +418,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             topic: '',
             imposterTopic: '',
             turnIndex: 0,
-            votes: {}
+            votes: {},
+            startTime: Date.now()
           });
 
           sendSystemMessage('🕵️ **A new Imposter game is forming!** Type `/imposter join` to participate.');
@@ -526,7 +550,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
   const startImposterGame = () => {
     if (!imposterState) return;
-    const players = imposterState.players;
+    const players = [...imposterState.players].sort();
     const imposterIndex = Math.floor(Math.random() * players.length);
     const imposter = players[imposterIndex];
     const topicPair = IMPOSTER_TOPICS[Math.floor(Math.random() * IMPOSTER_TOPICS.length)];
@@ -537,7 +561,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       topic: topicPair.crew,
       imposterTopic: topicPair.imposter,
       turnIndex: 0,
-      startTime: Date.now()
+      startTime: Date.now(),
+      phaseEndTime: 0
     });
     // Clear votes for the new game
     GunService.imposter.get('votes_list').put(null);
@@ -566,16 +591,19 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   };
 
   const startImposterDiscussion = () => {
-    GunService.imposter.get('status').put('discussing');
+    const endTime = Date.now() + 60000;
+    GunService.imposter.put({
+      status: 'discussing',
+      phaseEndTime: endTime
+    });
     sendSystemMessage('🗣️ **Discussion Phase!** You have 1 minute to discuss who the Imposter is.');
-    
-    setTimeout(() => {
-      startImposterVoting();
-    }, 60000);
   };
 
   const startImposterVoting = () => {
-    GunService.imposter.get('status').put('voting');
+    GunService.imposter.put({
+      status: 'voting',
+      phaseEndTime: 0
+    });
     sendSystemMessage('🗳️ **Voting Phase!** Type `vote username` to cast your vote.');
   };
 
@@ -620,7 +648,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     sendSystemMessage(`🕵️ The Imposter was: **${imposterState.imposter}**\nTopic: **${imposterState.topic}**\nImposter Topic: **${imposterState.imposterTopic}**`);
     
     setTimeout(() => {
-      GunService.imposter.put({ status: 'inactive' });
+      GunService.imposter.put({ 
+        status: 'inactive',
+        imposter: '',
+        topic: '',
+        imposterTopic: '',
+        turnIndex: 0,
+        phaseEndTime: 0
+      });
       GunService.imposter.get('players_list').put(null);
       GunService.imposter.get('votes_list').put(null);
     }, 5000);
