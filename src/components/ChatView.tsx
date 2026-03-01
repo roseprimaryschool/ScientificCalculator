@@ -294,10 +294,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const processWordleGuess = (guess: string) => {
     if (!wordleState || !wordleState.active) return;
     
+    // Use the word from the state which is synced via Gun
     const target = wordleState.word;
+    if (!target) {
+      console.error('Wordle target word missing in state');
+      return;
+    }
+
     const newGuessCount = (wordleState.guesses || 0) + 1;
     
-    // Update guess count in Gun
+    // Update guess count in Gun - this will trigger the .on() for everyone
     GunService.wordle.get('guesses').put(newGuessCount);
 
     let feedback = '';
@@ -330,13 +336,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     const chatNode = gun.get('calcchat_lobby_v2');
     const msgId = uuidv4();
     
+    const isWin = guess === target;
     const botMsg = {
       sender: 'Wordle Bot',
-      sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=Wordle',
-      text: guess === target 
-        ? `🎉 **${currentUser.username} WON!**\n\nWord: **${target}**\nTotal Guesses: **${newGuessCount}**\n\n${feedback}`
-        : `**${currentUser.username}'s Result:**\n${feedback}`,
-      timestamp: Date.now() + 10, // Slightly after the guess message
+      sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=Wordle&backgroundColor=10b981',
+      text: isWin 
+        ? `🎉 **${currentUser.username} GUESSED IT!**\n\nWord: **${target}**\nTotal Team Guesses: **${newGuessCount}**\n\n${feedback}\n\n*The game has ended. Type /wordle to start a new one!*`
+        : `**${currentUser.username}** guessed **${guess}**:\n${feedback}`,
+      timestamp: Date.now() + 50, // Ensure it appears after the user's guess
       recipient: '',
       reactions: '[]'
     };
@@ -345,8 +352,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       if (ack.err) console.error('Wordle bot message error:', ack.err);
     });
     
-    if (guess === target) {
-      // Reset game after a short delay to allow message propagation
+    if (isWin) {
+      // Reset game after a delay to allow everyone to see the win
       setTimeout(() => {
         GunService.wordle.put({
           active: false,
@@ -354,7 +361,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
           guesses: 0,
           startTime: 0
         });
-      }, 1000);
+      }, 2000);
     }
   };
 
@@ -448,6 +455,18 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             <p className="text-zinc-500 text-xs">{recipient ? (recipientData?.presence || 'offline') : 'Everyone is here'}</p>
           </div>
         </div>
+        
+        {!recipient && wordleState?.active && (
+          <div className="ml-auto flex items-center gap-3 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl animate-in fade-in slide-in-from-right-4">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Wordle Active</span>
+              <span className="text-[9px] text-emerald-400/70 font-mono">Guesses: {wordleState.guesses}</span>
+            </div>
+            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-900/40">
+              <span className="text-white font-bold text-xs">W</span>
+            </div>
+          </div>
+        )}
       </div>
 
       <div 
