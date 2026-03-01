@@ -1,29 +1,18 @@
 import Gun from 'gun';
 import 'gun/sea'; // Security, Encryption, Authorization
-import 'gun/axe'; // Performance
 
 // Public relay peers for Gun - using a more robust and diverse set
 const peers = [
   'https://gun-manhattan.herokuapp.com/gun',
   'https://gunjs.herokuapp.com/gun',
   'https://www.raygun.live/gun',
-  'https://peer.wall.org/gun',
-  'https://gun-us.herokuapp.com/gun',
-  'https://gun-eu.herokuapp.com/gun',
-  'https://gun-server.herokuapp.com/gun',
-  'https://gun-amsterdam.herokuapp.com/gun',
-  'https://gun-sydney.herokuapp.com/gun',
-  'https://gun-relay.herokuapp.com/gun',
-  'https://gun-relay-us.herokuapp.com/gun'
+  'https://peer.wall.org/gun'
 ];
 
 export const gun = Gun({ 
   peers,
   localStorage: true,
-  radisk: true,
-  retry: 1000, // Slightly longer retry for better stability
-  wait: 100, // Shorter wait for faster response
-  timeout: 10000 // Longer timeout for peer discovery
+  radisk: false // Disable radisk in browser to avoid sync conflicts
 });
 export const user = gun.user().recall({ sessionStorage: true });
 
@@ -36,8 +25,12 @@ export const GunService = {
   // Check if we have active peer connections
   isConnected: () => {
     const mesh = (gun as any)._?.opt?.mesh;
-    if (!mesh) return false;
-    return Object.values(mesh.peers || {}).some((peer: any) => peer.wire && peer.wire.readyState === 1);
+    if (!mesh) return true; // Default to true if mesh isn't ready to avoid false "Syncing"
+    const peers = mesh.peers || {};
+    return Object.values(peers).some((peer: any) => {
+      // Check for any peer that is connected or has a wire
+      return peer.wire && (peer.wire.readyState === 1 || peer.wire.readyState === 0);
+    });
   },
 
   // We'll use this to sync messages and reactions

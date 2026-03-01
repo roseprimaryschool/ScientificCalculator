@@ -936,11 +936,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         ref={scrollRef}
         className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide relative"
       >
-        {isLoading && (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/20 backdrop-blur-[2px] z-10">
+        {isLoading && messages.length === 0 && (
+          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/10 backdrop-blur-[1px] z-10">
             <div className="flex flex-col items-center gap-2">
-              <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin" />
-              <span className="text-[10px] text-emerald-500 font-bold uppercase tracking-widest">Loading History...</span>
+              <div className="w-6 h-6 border-2 border-emerald-500/50 border-t-emerald-500 rounded-full animate-spin" />
+              <span className="text-[9px] text-emerald-500/70 font-bold uppercase tracking-widest">Syncing History...</span>
             </div>
           </div>
         )}
