@@ -206,21 +206,44 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     const trimmedInput = inputText.trim();
 
     // Handle Wordle Commands
-    if (!recipient && trimmedInput.toLowerCase() === '/wordle') {
-      if (wordleState?.active) {
-        sendSystemMessage('A Wordle game is already in progress!');
-      } else {
-        const randomWord = WORDLE_WORDS[Math.floor(Math.random() * WORDLE_WORDS.length)];
-        GunService.wordle.put({
-          active: true,
-          word: randomWord,
-          guesses: 0,
-          startTime: Date.now()
-        });
-        sendSystemMessage('🎮 **Multiplayer Wordle Started!** Guess the 5-letter word by typing `guess <word>`.');
+    if (!recipient && trimmedInput.toLowerCase().startsWith('/wordle')) {
+      const command = trimmedInput.toLowerCase();
+      
+      if (command === '/wordle cancel') {
+        if (!wordleState?.active) {
+          sendSystemMessage('No Wordle game is currently in progress.');
+        } else {
+          const revealedWord = wordleState.word;
+          sendSystemMessage(`🚫 **Wordle Cancelled!**\n\nThe word was: **${revealedWord}**\n\n*Game ended by ${currentUser.username}*`);
+          
+          // Reset game
+          GunService.wordle.put({
+            active: false,
+            word: '',
+            guesses: 0,
+            startTime: 0
+          });
+        }
+        setInputText('');
+        return;
       }
-      setInputText('');
-      return;
+
+      if (command === '/wordle') {
+        if (wordleState?.active) {
+          sendSystemMessage('A Wordle game is already in progress!');
+        } else {
+          const randomWord = WORDLE_WORDS[Math.floor(Math.random() * WORDLE_WORDS.length)];
+          GunService.wordle.put({
+            active: true,
+            word: randomWord,
+            guesses: 0,
+            startTime: Date.now()
+          });
+          sendSystemMessage('🎮 **Multiplayer Wordle Started!** Guess the 5-letter word by typing `guess <word>`.');
+        }
+        setInputText('');
+        return;
+      }
     }
 
     if (!recipient && trimmedInput.toLowerCase().startsWith('guess ')) {
