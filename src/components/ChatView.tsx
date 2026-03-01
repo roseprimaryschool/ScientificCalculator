@@ -398,14 +398,24 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         } else {
           // Reset the entire game state
           const imposterNode = GunService.imposter;
+          
+          // Clear players properly by setting each to null
+          if (imposterState?.players) {
+            imposterState.players.forEach(p => {
+              imposterNode.get('players_list').get(p).put(null);
+            });
+          }
+          
           imposterNode.put({
             status: 'lobby',
             imposter: '',
             topic: '',
             imposterTopic: '',
             turnIndex: 0,
-            startTime: Date.now()
+            startTime: Date.now(),
+            phaseEndTime: 0
           });
+          
           // Clear sub-nodes
           imposterNode.get('players_list').put(null);
           imposterNode.get('votes_list').put(null);
@@ -419,7 +429,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             imposterTopic: '',
             turnIndex: 0,
             votes: {},
-            startTime: Date.now()
+            startTime: Date.now(),
+            phaseEndTime: 0
           });
 
           sendSystemMessage('🕵️ **A new Imposter game is forming!** Type `/imposter join` to participate.');
@@ -466,9 +477,18 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       }
 
       if (command === '/imposter cancel') {
-        GunService.imposter.put({ status: 'inactive' });
-        GunService.imposter.get('players_list').put(null);
-        GunService.imposter.get('votes_list').put(null);
+        const imposterNode = GunService.imposter;
+        imposterNode.get('status').put('inactive');
+        
+        // Clear players properly by setting each to null
+        if (imposterState?.players) {
+          imposterState.players.forEach(p => {
+            imposterNode.get('players_list').get(p).put(null);
+          });
+        }
+        
+        imposterNode.get('players_list').put(null);
+        imposterNode.get('votes_list').put(null);
         sendSystemMessage('🕵️ **Imposter game cancelled.**');
         setInputText('');
         return;
@@ -648,7 +668,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     sendSystemMessage(`🕵️ The Imposter was: **${imposterState.imposter}**\nTopic: **${imposterState.topic}**\nImposter Topic: **${imposterState.imposterTopic}**`);
     
     setTimeout(() => {
-      GunService.imposter.put({ 
+      const imposterNode = GunService.imposter;
+      
+      // Clear players properly by setting each to null
+      if (imposterState?.players) {
+        imposterState.players.forEach(p => {
+          imposterNode.get('players_list').get(p).put(null);
+        });
+      }
+
+      imposterNode.put({ 
         status: 'inactive',
         imposter: '',
         topic: '',
@@ -656,8 +685,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
         turnIndex: 0,
         phaseEndTime: 0
       });
-      GunService.imposter.get('players_list').put(null);
-      GunService.imposter.get('votes_list').put(null);
+      imposterNode.get('players_list').put(null);
+      imposterNode.get('votes_list').put(null);
     }, 5000);
   };
 
