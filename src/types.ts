@@ -47,3 +47,10 @@ export interface ChatState {
   isUnlocked: boolean;
   currentUser: User | null;
 }
+
+export interface WordleState {
+  active: boolean;
+  word: string;
+  guesses: number;
+  startTime: number;
+}

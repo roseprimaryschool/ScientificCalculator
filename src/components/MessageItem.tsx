@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Message, Reaction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
 import { Smile, Trash2 } from 'lucide-react';
+import Markdown from 'react-markdown';
 
 interface MessageItemProps {
   message: Message;
@@ -63,7 +64,11 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isOwn, isAdmi
                 )}
               </div>
             )}
-            {message.text && <div>{message.text}</div>}
+            {message.text && (
+              <div className="markdown-body whitespace-pre-wrap break-words">
+                <Markdown>{message.text}</Markdown>
+              </div>
+            )}
 
             {isAdmin && (
               <button

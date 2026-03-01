@@ -6,6 +6,50 @@ import { gun, user as gunUser, GunService } from '../services/gun';
 import { ApiService } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
 
+const WORDLE_WORDS = [
+  'APPLE', 'BEACH', 'BRAIN', 'BREAD', 'BRUSH', 'CHAIR', 'CHEST', 'CHORD', 'CLICK', 'CLOCK',
+  'CLOUD', 'DANCE', 'DIARY', 'DRINK', 'DRIVE', 'EARTH', 'FEAST', 'FIELD', 'FRUIT', 'GLASS',
+  'GRAPE', 'GREEN', 'GHOST', 'HEART', 'HOUSE', 'JUICE', 'LIGHT', 'LEMON', 'MELON', 'MONEY',
+  'MUSIC', 'NIGHT', 'OCEAN', 'PARTY', 'PIANO', 'PILOT', 'PLANE', 'PHONE', 'PIZZA', 'PLANT',
+  'RADIO', 'RIVER', 'ROBOT', 'SHIRT', 'SHOES', 'SMILE', 'SNAKE', 'SPACE', 'SPOON', 'STORM',
+  'TABLE', 'TIGER', 'TOAST', 'TOUCH', 'TRAIN', 'TRUCK', 'VOICE', 'WATER', 'WATCH', 'WHALE',
+  'WORLD', 'WRITE', 'YOUTH', 'ZEBRA', 'ALIVE', 'ALONE', 'ANGRY', 'ANIMAL', 'AWAKE', 'BASIC',
+  'BEING', 'BIRTH', 'BLACK', 'BLIND', 'BLOOD', 'BOARD', 'BOOKS', 'BREAK', 'BUILD', 'BUSES',
+  'CARRY', 'CAUSE', 'CHILD', 'CLEAN', 'CLOSE', 'COACH', 'COAST', 'COUNT', 'COURT', 'COVER',
+  'CREAM', 'CRIME', 'CROSS', 'CROWD', 'CROWN', 'CYCLE', 'DAILY', 'DANCE', 'DEATH', 'DEPTH',
+  'DIRTY', 'DOUBT', 'DREAM', 'DRESS', 'DRINK', 'DRIVE', 'DUTY', 'EARLY', 'EARTH', 'EMPTY',
+  'ENEMY', 'ENJOY', 'ENTER', 'ERROR', 'EVENT', 'EVERY', 'EXIST', 'FAITH', 'FALSE', 'FAULT',
+  'FIELD', 'FIGHT', 'FINAL', 'FIRST', 'FLOOR', 'FOCUS', 'FORCE', 'FRAME', 'FRESH', 'FRONT',
+  'FRUIT', 'GLASS', 'GRANT', 'GRASS', 'GREAT', 'GREEN', 'GROUP', 'GUARD', 'GUESS', 'GUIDE',
+  'HAPPY', 'HEART', 'HEAVY', 'HELLO', 'HORSE', 'HOTEL', 'HOUSE', 'HUMAN', 'IDEAL', 'IMAGE',
+  'INDEX', 'INNER', 'INPUT', 'ISSUE', 'JOINT', 'JUDGE', 'KNIFE', 'LARGE', 'LASER', 'LAUGH',
+  'LAYER', 'LEARN', 'LEASE', 'LEAST', 'LEVEL', 'LIGHT', 'LIMIT', 'LOCAL', 'LOGIC', 'LOOSE',
+  'LOWER', 'LUCKY', 'LUNCH', 'MAGIC', 'MAJOR', 'MAKER', 'MARCH', 'MATCH', 'MAYOR', 'MEDIA',
+  'METAL', 'MIGHT', 'MINOR', 'MINUS', 'MIXED', 'MODEL', 'MONEY', 'MONTH', 'MORAL', 'MOTOR',
+  'MOUTH', 'MUSIC', 'NAKED', 'NERVE', 'NEVER', 'NEWLY', 'NIGHT', 'NOISE', 'NORTH', 'NOTED',
+  'NOVEL', 'NURSE', 'OCCUR', 'OFFER', 'ORDER', 'OTHER', 'OUTER', 'OWNER', 'PANEL', 'PAPER',
+  'PARTY', 'PEACE', 'PHASE', 'PHONE', 'PHOTO', 'PIECE', 'PILOT', 'PITCH', 'PLACE', 'PLAIN',
+  'PLANE', 'PLANT', 'PLATE', 'POINT', 'POUND', 'POWER', 'PRESS', 'PRICE', 'PRIDE', 'PRIME',
+  'PRINT', 'PRIOR', 'PRIZE', 'PROOF', 'PROUD', 'PROVE', 'QUEEN', 'QUICK', 'QUIET', 'QUITE',
+  'RADIO', 'RAISE', 'RANGE', 'RAPID', 'RATIO', 'REACH', 'READY', 'RELAX', 'REPLY', 'RIGHT',
+  'RIVER', 'ROUGH', 'ROUND', 'ROUTE', 'ROYAL', 'RURAL', 'SCALE', 'SCENE', 'SCOPE', 'SCORE',
+  'SENSE', 'SERVE', 'SHAKE', 'SHARE', 'SHARP', 'SHEET', 'SHELF', 'SHELL', 'SHIFT', 'SHIRT',
+  'SHOCK', 'SHOOT', 'SHORT', 'SHOWN', 'SIGHT', 'SINCE', 'SIXTH', 'SIXTY', 'SIZED', 'SKILL',
+  'SLEEP', 'SLIDE', 'SMALL', 'SMART', 'SMILE', 'SMITH', 'SMOKE', 'SOLID', 'SOLVE', 'SORRY',
+  'SOUND', 'SOUTH', 'SPACE', 'SPARE', 'SPEAK', 'SPEED', 'SPEND', 'SPENT', 'SPLIT', 'SPOKE',
+  'SPORT', 'STAFF', 'STAGE', 'STAKE', 'STAND', 'START', 'STATE', 'STEAM', 'STEEL', 'STICK',
+  'STILL', 'STOCK', 'STONE', 'STOOD', 'STORE', 'STORM', 'STORY', 'STRIP', 'STUCK', 'STUDY',
+  'STUFF', 'STYLE', 'SUGAR', 'SUITE', 'SUPER', 'SWEET', 'TABLE', 'TAKEN', 'TASTE', 'TAXES',
+  'TEACH', 'TEETH', 'TEXAS', 'THANK', 'THEFT', 'THEIR', 'THEME', 'THERE', 'THESE', 'THICK',
+  'THING', 'THINK', 'THIRD', 'THOSE', 'THREE', 'THROW', 'TIGHT', 'TIMES', 'TIRED', 'TITLE',
+  'TODAY', 'TOPIC', 'TOTAL', 'TOUCH', 'TOUGH', 'TOWER', 'TRACK', 'TRADE', 'TRAIN', 'TREAT',
+  'TREND', 'TRIAL', 'TRIED', 'TRIES', 'TRUCK', 'TRUST', 'TRUTH', 'TWICE', 'UNDER', 'UNDUE',
+  'UNION', 'UNITY', 'UNTIL', 'UPPER', 'UPSET', 'URBAN', 'USAGE', 'USUAL', 'VALID', 'VALUE',
+  'VIDEO', 'VIRUS', 'VISIT', 'VITAL', 'VOICE', 'WASTE', 'WATCH', 'WATER', 'WHEEL', 'WHERE',
+  'WHICH', 'WHILE', 'WHITE', 'WHOLE', 'WHOSE', 'WOMAN', 'WOMEN', 'WORLD', 'WORRY', 'WORSE',
+  'WORST', 'WORTH', 'WRITE', 'WRONG', 'WROTE', 'YIELD', 'YOUNG', 'YOUTH'
+];
+
 interface ChatViewProps {
   currentUser: User;
   recipient?: string; // undefined for lobby
@@ -20,8 +64,26 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [isConnected, setIsConnected] = useState(true);
   const [isAuth, setIsAuth] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
+  const [wordleState, setWordleState] = useState<{ active: boolean, word: string, guesses: number } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    // Listen for Wordle state
+    GunService.wordle.on((data: any) => {
+      if (data) {
+        setWordleState({
+          active: !!data.active,
+          word: data.word || '',
+          guesses: data.guesses || 0
+        });
+      }
+    });
+
+    return () => {
+      GunService.wordle.off();
+    };
+  }, []);
 
   useEffect(() => {
     // Track auth status
@@ -141,6 +203,43 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     e.preventDefault();
     if (!inputText.trim() && !selectedImage) return;
 
+    const trimmedInput = inputText.trim();
+
+    // Handle Wordle Commands
+    if (!recipient && trimmedInput.toLowerCase() === '/wordle') {
+      if (wordleState?.active) {
+        sendSystemMessage('A Wordle game is already in progress!');
+      } else {
+        const randomWord = WORDLE_WORDS[Math.floor(Math.random() * WORDLE_WORDS.length)];
+        GunService.wordle.put({
+          active: true,
+          word: randomWord,
+          guesses: 0,
+          startTime: Date.now()
+        });
+        sendSystemMessage('🎮 **Multiplayer Wordle Started!** Guess the 5-letter word by typing `guess <word>`.');
+      }
+      setInputText('');
+      return;
+    }
+
+    if (!recipient && trimmedInput.toLowerCase().startsWith('guess ')) {
+      if (!wordleState?.active) {
+        // Just send as normal message if no game active
+      } else {
+        const guess = trimmedInput.split(' ')[1]?.toUpperCase();
+        if (!guess || guess.length !== 5) {
+          sendSystemMessage('Your guess must be a valid 5-letter word.');
+          setInputText('');
+          return;
+        }
+
+        processWordleGuess(guess);
+        setInputText('');
+        return;
+      }
+    }
+
     const chatNode = recipient 
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
       : gun.get('calcchat_lobby_v2');
@@ -178,6 +277,88 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
     setInputText('');
     setSelectedImage(null);
+  };
+
+  const sendSystemMessage = (text: string) => {
+    const chatNode = gun.get('calcchat_lobby_v2');
+    const msgId = uuidv4();
+    chatNode.get(msgId).put({
+      sender: 'System',
+      sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=System',
+      text,
+      timestamp: Date.now(),
+      recipient: '',
+      reactions: '[]'
+    });
+  };
+
+  const processWordleGuess = (guess: string) => {
+    if (!wordleState) return;
+    const target = wordleState.word;
+    const newGuessCount = (wordleState.guesses || 0) + 1;
+    
+    // Update guess count in Gun
+    GunService.wordle.get('guesses').put(newGuessCount);
+
+    let feedback = '';
+    const targetArr = target.split('');
+    const guessArr = guess.split('');
+    const result = new Array(5).fill('⬛');
+
+    // First pass: Green
+    for (let i = 0; i < 5; i++) {
+      if (guessArr[i] === targetArr[i]) {
+        result[i] = '🟩';
+        targetArr[i] = ''; // Mark as used
+        guessArr[i] = '';
+      }
+    }
+
+    // Second pass: Yellow
+    for (let i = 0; i < 5; i++) {
+      if (guessArr[i] !== '') {
+        const index = targetArr.indexOf(guessArr[i]);
+        if (index !== -1) {
+          result[i] = '🟨';
+          targetArr[index] = ''; // Mark as used
+        }
+      }
+    }
+
+    feedback = result.join('');
+
+    const chatNode = gun.get('calcchat_lobby_v2');
+    const msgId = uuidv4();
+    
+    if (guess === target) {
+      // WIN
+      chatNode.get(msgId).put({
+        sender: 'Wordle',
+        sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=Wordle',
+        text: `🎉 **${currentUser.username} WON!**\n\nWord: **${target}**\nTotal Guesses: **${newGuessCount}**\n\n${feedback}`,
+        timestamp: Date.now(),
+        recipient: '',
+        reactions: '[]'
+      });
+      
+      // Reset game
+      GunService.wordle.put({
+        active: false,
+        word: '',
+        guesses: 0,
+        startTime: 0
+      });
+    } else {
+      // Incorrect guess
+      chatNode.get(msgId).put({
+        sender: 'Wordle',
+        sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=Wordle',
+        text: `**${currentUser.username}'s Guess:** ${guess}\n${feedback}`,
+        timestamp: Date.now(),
+        recipient: '',
+        reactions: '[]'
+      });
+    }
   };
 
   const handleImageSelect = (e: React.ChangeEvent<HTMLInputElement>) => {

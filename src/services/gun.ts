@@ -51,5 +51,8 @@ export const GunService = {
   logs: gun.get('calcchat_logs_v2'),
 
   // Global presence
-  presence: gun.get('calcchat_presence_v2')
+  presence: gun.get('calcchat_presence_v2'),
+
+  // Wordle game state
+  wordle: gun.get('calcchat_wordle_v2')
 };
