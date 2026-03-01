@@ -1,3 +1,5 @@
+export type UserPresence = 'online' | 'offline' | 'idle' | 'dnd';
+
 export interface User {
   id: string;
   username: string;
@@ -7,6 +9,12 @@ export interface User {
   createdAt?: number;
   lastOnline?: number;
   isAdmin?: boolean;
+  bio?: string;
+  statusMessage?: string;
+  presence?: UserPresence;
+  lastActive?: number;
+  theme?: string;
+  customBg?: string;
 }
 
 export interface Reaction {
@@ -23,6 +31,16 @@ export interface Message {
   timestamp: number;
   reactions: Reaction[];
   recipient?: string; // undefined for lobby
+  image?: string; // Base64 or URL
+}
+
+export interface AdminLog {
+  id: string;
+  action: string;
+  target?: string;
+  admin: string;
+  timestamp: number;
+  details?: string;
 }
 
 export interface ChatState {

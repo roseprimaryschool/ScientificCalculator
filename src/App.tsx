@@ -17,6 +17,68 @@ export default function App() {
   const [activeView, setActiveView] = useState<'lobby' | 'private' | 'settings' | 'admin'>('lobby');
   const [activeRecipient, setActiveRecipient] = useState<string | undefined>(undefined);
   const [selectedProfile, setSelectedProfile] = useState<Partial<User> | null>(null);
+  const [lastActivity, setLastActivity] = useState(Date.now());
+
+  // Theme application
+  useEffect(() => {
+    if (currentUser?.theme || currentUser?.customBg) {
+      const root = document.documentElement;
+      const theme = currentUser.theme || 'default';
+      
+      // Remove old theme classes
+      root.classList.remove('theme-default', 'theme-midnight', 'theme-sunset', 'theme-lavender', 'theme-crimson', 'theme-ocean', 'theme-forest', 'theme-rose', 'theme-gold');
+      root.classList.add(`theme-${theme}`);
+
+      if (currentUser.customBg) {
+        root.style.setProperty('--custom-bg', `url(${currentUser.customBg})`);
+        root.classList.add('has-custom-bg');
+      } else {
+        root.style.removeProperty('--custom-bg');
+        root.classList.remove('has-custom-bg');
+      }
+    }
+  }, [currentUser?.theme, currentUser?.customBg]);
+
+  // Presence tracking
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const updateActivity = () => {
+      setLastActivity(Date.now());
+      // Always update Gun on activity to ensure the "online" status propagates
+      // even if the local state already says "online"
+      if (currentUser.presence !== 'dnd') {
+        ApiService.updatePresence(currentUser.username, 'online');
+      }
+    };
+
+    window.addEventListener('mousemove', updateActivity);
+    window.addEventListener('keydown', updateActivity);
+    window.addEventListener('click', updateActivity);
+
+    // Heartbeat: Update Gun every 15 seconds to keep presence alive and sync healthy
+    const heartbeat = setInterval(() => {
+      const now = Date.now();
+      const diff = now - lastActivity;
+
+      if (diff < 300000) { // If active in last 5 mins
+        if (currentUser.presence !== 'dnd') {
+          ApiService.updatePresence(currentUser.username, 'online');
+        }
+      } else {
+        if (currentUser.presence !== 'idle' && currentUser.presence !== 'dnd') {
+          ApiService.updatePresence(currentUser.username, 'idle');
+        }
+      }
+    }, 15000);
+
+    return () => {
+      window.removeEventListener('mousemove', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('click', updateActivity);
+      clearInterval(heartbeat);
+    };
+  }, [currentUser, lastActivity]);
 
   useEffect(() => {
     const unlocked = ApiService.getIsUnlocked();
@@ -50,6 +112,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (currentUser) {
+      ApiService.updatePresence(currentUser.username, 'offline');
+    }
     setCurrentUser(null);
     ApiService.setCurrentUser(null);
     setActiveView('lobby');
@@ -71,19 +136,31 @@ export default function App() {
   };
 
   if (!isUnlocked) {
-    return <Calculator onUnlock={handleUnlock} />;
+    return (
+      <div className="theme-wrapper h-screen overflow-hidden">
+        <Calculator onUnlock={handleUnlock} />
+      </div>
+    );
   }
 
   if (!currentUser) {
-    return <Auth onLogin={handleLogin} />;
+    return (
+      <div className="theme-wrapper h-screen overflow-hidden">
+        <Auth onLogin={handleLogin} />
+      </div>
+    );
   }
 
   if (currentUser.isAdmin && activeView === 'admin') {
-    return <AdminPanel onLogout={handleLogout} onBackToChat={() => setActiveView('lobby')} />;
+    return (
+      <div className="theme-wrapper h-screen overflow-hidden">
+        <AdminPanel onLogout={handleLogout} onBackToChat={() => setActiveView('lobby')} />
+      </div>
+    );
   }
 
   return (
-    <div className="flex h-screen bg-zinc-950 overflow-hidden font-sans selection:bg-emerald-500/30">
+    <div className="theme-wrapper h-screen overflow-hidden flex font-sans selection:bg-emerald-500/30">
       <Sidebar 
         currentUser={currentUser}
         onViewChange={handleViewChange}

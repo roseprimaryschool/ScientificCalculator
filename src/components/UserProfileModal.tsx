@@ -39,14 +39,34 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({ user, onClos
               <img 
                 src={user.profilePic || `https://api.dicebear.com/7.x/avataaars/svg?seed=${user.username}`} 
                 alt={user.username}
-                className="w-24 h-24 rounded-2xl border-4 border-zinc-900 bg-zinc-800 shadow-xl"
+                className="w-24 h-24 rounded-2xl border-4 border-zinc-900 bg-zinc-800 shadow-xl object-cover"
                 referrerPolicy="no-referrer"
               />
-              <div className="absolute bottom-1 right-1 w-5 h-5 bg-emerald-500 border-4 border-zinc-900 rounded-full"></div>
+              <div className="absolute bottom-1 right-1 w-6 h-6 bg-zinc-900 rounded-full flex items-center justify-center">
+                <div className={`w-4 h-4 rounded-full border-2 border-zinc-900 ${
+                  user.presence === 'online' ? 'bg-emerald-500' : 
+                  user.presence === 'idle' ? 'bg-yellow-500' : 
+                  user.presence === 'dnd' ? 'bg-red-500' : 'bg-zinc-500'
+                }`}></div>
+              </div>
             </div>
 
-            <h3 className="mt-4 text-2xl font-bold text-white">{user.username}</h3>
-            <p className="text-zinc-500 text-sm">Member of CalcChat Pro</p>
+            <div className="mt-4">
+              <h3 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+                {user.username}
+                {user.isAdmin && <span className="text-[10px] bg-emerald-500/20 text-emerald-500 px-2 py-0.5 rounded-full uppercase tracking-widest">Admin</span>}
+              </h3>
+              <p className="text-emerald-500 text-sm mt-1 italic font-medium">
+                {user.statusMessage ? `"${user.statusMessage}"` : 'No status set'}
+              </p>
+            </div>
+
+            {user.bio && (
+              <div className="mt-6 p-4 bg-zinc-950 rounded-2xl border border-zinc-800 text-left">
+                <p className="text-[10px] text-zinc-500 uppercase font-bold tracking-wider mb-2">Bio</p>
+                <p className="text-sm text-zinc-300 leading-relaxed">{user.bio}</p>
+              </div>
+            )}
 
             <div className="mt-8 space-y-4 text-left">
               <div className="flex items-center gap-4 p-3 bg-zinc-950 rounded-2xl border border-zinc-800">

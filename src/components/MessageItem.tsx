@@ -1,19 +1,21 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Message, Reaction } from '../types';
 import { motion, AnimatePresence } from 'motion/react';
-import { Smile } from 'lucide-react';
+import { Smile, Trash2 } from 'lucide-react';
 
 interface MessageItemProps {
   message: Message;
   isOwn: boolean;
+  isAdmin?: boolean;
   onReact: (emoji: string) => void;
+  onDelete?: () => void;
   onProfileClick: (username: string) => void;
   profilePic?: string;
 }
 
 const EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥', '👏', '💯'];
 
-export const MessageItem: React.FC<MessageItemProps> = ({ message, isOwn, onReact, onProfileClick, profilePic }) => {
+export const MessageItem: React.FC<MessageItemProps> = ({ message, isOwn, isAdmin, onReact, onDelete, onProfileClick, profilePic }) => {
   const [showReactions, setShowReactions] = useState(false);
 
   return (
@@ -45,7 +47,36 @@ export const MessageItem: React.FC<MessageItemProps> = ({ message, isOwn, onReac
                 {message.sender}
               </div>
             )}
-            {message.text}
+            {message.image && (
+              <div className="relative group/img">
+                <img 
+                  src={message.image} 
+                  alt="Shared content" 
+                  className="max-w-full rounded-lg mb-2 border border-black/10 shadow-sm cursor-zoom-in hover:brightness-110 transition-all"
+                  referrerPolicy="no-referrer"
+                  onClick={() => window.open(message.image, '_blank')}
+                />
+                {!message.text && (
+                  <div className="absolute bottom-2 right-2 bg-black/50 backdrop-blur-sm text-[8px] text-white/70 px-1.5 py-0.5 rounded uppercase tracking-widest opacity-0 group-hover/img:opacity-100 transition-opacity">
+                    Image
+                  </div>
+                )}
+              </div>
+            )}
+            {message.text && <div>{message.text}</div>}
+
+            {isAdmin && (
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  onDelete?.();
+                }}
+                className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity shadow-lg"
+                title="Delete Message"
+              >
+                <Trash2 className="w-3 h-3" />
+              </button>
+            )}
             
             {message.reactions.length > 0 && (
               <div className={`absolute -bottom-3 ${isOwn ? 'right-0' : 'left-0'} flex gap-1`}>
