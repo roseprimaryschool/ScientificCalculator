@@ -224,9 +224,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     }
 
     if (!recipient && trimmedInput.toLowerCase().startsWith('guess ')) {
-      if (!wordleState?.active) {
-        // Just send as normal message if no game active
-      } else {
+      if (wordleState?.active) {
         const guess = trimmedInput.split(' ')[1]?.toUpperCase();
         if (!guess || guess.length !== 5) {
           sendSystemMessage('Your guess must be a valid 5-letter word.');
@@ -234,9 +232,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
           return;
         }
 
+        // Process Wordle logic but ALSO send the message so others see the guess
         processWordleGuess(guess);
-        setInputText('');
-        return;
       }
     }
 
@@ -289,11 +286,14 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       timestamp: Date.now(),
       recipient: '',
       reactions: '[]'
+    }, (ack: any) => {
+      if (ack.err) console.error('System message error:', ack.err);
     });
   };
 
   const processWordleGuess = (guess: string) => {
-    if (!wordleState) return;
+    if (!wordleState || !wordleState.active) return;
+    
     const target = wordleState.word;
     const newGuessCount = (wordleState.guesses || 0) + 1;
     
@@ -330,34 +330,31 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     const chatNode = gun.get('calcchat_lobby_v2');
     const msgId = uuidv4();
     
+    const botMsg = {
+      sender: 'Wordle Bot',
+      sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=Wordle',
+      text: guess === target 
+        ? `🎉 **${currentUser.username} WON!**\n\nWord: **${target}**\nTotal Guesses: **${newGuessCount}**\n\n${feedback}`
+        : `**${currentUser.username}'s Result:**\n${feedback}`,
+      timestamp: Date.now() + 10, // Slightly after the guess message
+      recipient: '',
+      reactions: '[]'
+    };
+
+    chatNode.get(msgId).put(botMsg, (ack: any) => {
+      if (ack.err) console.error('Wordle bot message error:', ack.err);
+    });
+    
     if (guess === target) {
-      // WIN
-      chatNode.get(msgId).put({
-        sender: 'Wordle',
-        sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=Wordle',
-        text: `🎉 **${currentUser.username} WON!**\n\nWord: **${target}**\nTotal Guesses: **${newGuessCount}**\n\n${feedback}`,
-        timestamp: Date.now(),
-        recipient: '',
-        reactions: '[]'
-      });
-      
-      // Reset game
-      GunService.wordle.put({
-        active: false,
-        word: '',
-        guesses: 0,
-        startTime: 0
-      });
-    } else {
-      // Incorrect guess
-      chatNode.get(msgId).put({
-        sender: 'Wordle',
-        sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=Wordle',
-        text: `**${currentUser.username}'s Guess:** ${guess}\n${feedback}`,
-        timestamp: Date.now(),
-        recipient: '',
-        reactions: '[]'
-      });
+      // Reset game after a short delay to allow message propagation
+      setTimeout(() => {
+        GunService.wordle.put({
+          active: false,
+          word: '',
+          guesses: 0,
+          startTime: 0
+        });
+      }, 1000);
     }
   };
 
