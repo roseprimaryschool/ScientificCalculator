@@ -289,9 +289,47 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     if (!inputText.trim() && !selectedImage) return;
 
     const trimmedInput = inputText.trim();
+    const isWordleGuess = !recipient && trimmedInput.toLowerCase().startsWith('guess ') && wordleState?.active;
+    const isWordleCommand = !recipient && trimmedInput.toLowerCase().startsWith('/wordle');
+    const isImposterCommand = !recipient && trimmedInput.toLowerCase().startsWith('/imposter');
 
-    // Handle Imposter Commands
-    if (!recipient && trimmedInput.toLowerCase().startsWith('/imposter')) {
+    // 1. Handle Wordle Logic (Commands and Guesses)
+    if (isWordleCommand) {
+      const command = trimmedInput.toLowerCase();
+      if (command === '/wordle cancel') {
+        if (!wordleState?.active) {
+          sendSystemMessage('No Wordle game is currently in progress.');
+        } else {
+          const revealedWord = wordleState.word;
+          sendSystemMessage(`🚫 **Wordle Cancelled!**\n\nThe word was: **${revealedWord}**\n\n*Game ended by ${currentUser.username}*`);
+          GunService.wordle.put({ active: false, word: '', guesses: 0, startTime: 0 });
+        }
+      } else if (command === '/wordle') {
+        if (wordleState?.active) {
+          sendSystemMessage('A Wordle game is already in progress!');
+        } else {
+          const randomWord = WORDLE_WORDS[Math.floor(Math.random() * WORDLE_WORDS.length)];
+          GunService.wordle.put({ active: true, word: randomWord, guesses: 0, startTime: Date.now() });
+          sendSystemMessage('🎮 **Multiplayer Wordle Started!** Guess the 5-letter word by typing `guess <word>`.');
+        }
+      }
+      setInputText('');
+      return;
+    }
+
+    if (isWordleGuess) {
+      const guess = trimmedInput.split(' ')[1]?.toUpperCase();
+      if (!guess || guess.length !== 5) {
+        sendSystemMessage('Your guess must be a valid 5-letter word.');
+        setInputText('');
+        return;
+      }
+      processWordleGuess(guess);
+      // We DON'T return here, so the guess is also sent as a chat message
+    }
+
+    // 2. Handle Imposter Commands
+    if (isImposterCommand) {
       const parts = trimmedInput.split(' ');
       const cmd = parts[1]?.toLowerCase();
 
@@ -300,15 +338,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
           sendSystemMessage('An Imposter game is already in progress!');
         } else {
           GunService.imposter.get('status').put('lobby');
-          GunService.imposter.get('players').put(null); // Clear players
+          GunService.imposter.get('players').put(null);
           GunService.imposter.get('config').put({ turnIndex: 0, currentTopic: '', discussionEndTime: 0 });
           sendSystemMessage('A new Imposter game is forming! Type `/imposter join` to participate.');
         }
-        setInputText('');
-        return;
-      }
-
-      if (cmd === 'join') {
+      } else if (cmd === 'join') {
         if (imposterState.status !== 'lobby') {
           sendSystemMessage('No game is currently forming. Use `/imposter` to start one.');
         } else if (imposterState.players[currentUser.username]) {
@@ -321,103 +355,75 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
           });
           const playerCount = Object.keys(imposterState.players).length + 1;
           sendSystemMessage(`${currentUser.username} has joined the game! (${playerCount} players)`);
-          if (playerCount >= 3) {
-            sendSystemMessage('We have enough players! Type `/imposter start` to begin.');
+          if (playerCount >= 3) sendSystemMessage('We have enough players! Type `/imposter start` to begin.');
+        }
+      } else if (cmd === 'start') {
+        if (imposterState.status === 'lobby') {
+          const playerList = Object.keys(imposterState.players);
+          if (playerList.length < 3) {
+            sendSystemMessage('Need at least 3 players to start.');
+          } else {
+            const imposterIndex = Math.floor(Math.random() * playerList.length);
+            const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
+            GunService.imposter.get('status').put('turns');
+            GunService.imposter.get('config').put({ turnIndex: 0, currentTopic: JSON.stringify(topic) });
+            playerList.forEach((uname, idx) => {
+              const isImposter = idx === imposterIndex;
+              GunService.imposter.get('players').get(uname).put({
+                role: isImposter ? 'Imposter' : 'Crewmate',
+                topic: isImposter ? topic.imposter : topic.crew,
+                hasSpoken: false,
+                vote: ''
+              });
+            });
+            sendSystemMessage('The Imposter game is starting! Roles assigned.');
+            sendSystemMessage(`It's ${playerList[0]}'s turn.`);
           }
         }
-        setInputText('');
-        return;
-      }
-
-      if (cmd === 'start') {
-        if (imposterState.status !== 'lobby') return;
-        const playerList = Object.keys(imposterState.players);
-        if (playerList.length < 3) {
-          sendSystemMessage('Need at least 3 players to start.');
-        } else {
-          // Assignment logic
-          const imposterIndex = Math.floor(Math.random() * playerList.length);
-          const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
-          
-          GunService.imposter.get('status').put('turns');
-          GunService.imposter.get('config').put({
-            turnIndex: 0,
-            currentTopic: JSON.stringify(topic)
-          });
-
-          playerList.forEach((uname, idx) => {
-            const isImposter = idx === imposterIndex;
-            GunService.imposter.get('players').get(uname).put({
-              role: isImposter ? 'Imposter' : 'Crewmate',
-              topic: isImposter ? topic.imposter : topic.crew,
-              hasSpoken: false,
-              vote: ''
-            });
-          });
-
-          sendSystemMessage('The Imposter game is starting!');
-          sendSystemMessage('Roles have been assigned.');
-          sendSystemMessage(`It's ${playerList[0]}'s turn to send a message about their topic.`);
+      } else if (cmd === 'cancel') {
+        if (imposterState.status !== 'idle') {
+          const imposter = Object.values(imposterState.players).find(p => p.role === 'Imposter');
+          sendSystemMessage(`Game cancelled! Imposter was **${imposter?.username || 'unknown'}**. Topic: "**${imposterState.currentTopic?.imposter || 'unknown'}**".`);
+          resetImposterGame();
         }
-        setInputText('');
-        return;
-      }
-
-      if (cmd === 'cancel') {
-        if (imposterState.status === 'idle') return;
-        const imposter = Object.values(imposterState.players).find(p => p.role === 'Imposter');
-        sendSystemMessage(`Game cancelled! The imposter was **${imposter?.username || 'unknown'}** and their topic was "**${imposterState.currentTopic?.imposter || 'unknown'}**".`);
-        resetImposterGame();
-        setInputText('');
-        return;
-      }
-    }
-
-    // Handle Voting
-    if (!recipient && imposterState.status === 'voting' && trimmedInput.toLowerCase().startsWith('vote ')) {
-      const targetUsername = trimmedInput.substring(5).trim();
-      const player = imposterState.players[currentUser.username];
-      if (!player) return;
-      if (player.vote) {
-        sendSystemMessage('You have already voted.');
-        setInputText('');
-        return;
-      }
-
-      const target = Object.keys(imposterState.players).find(u => u.toLowerCase() === targetUsername.toLowerCase());
-      if (!target) {
-        sendSystemMessage('Invalid player to vote for.');
-        setInputText('');
-        return;
-      }
-
-      GunService.imposter.get('players').get(currentUser.username).get('vote').put(target);
-      sendSystemMessage(`You voted for ${target}.`);
-
-      // Check if all voted
-      const updatedPlayers = { ...imposterState.players };
-      updatedPlayers[currentUser.username].vote = target;
-      const allVoted = Object.values(updatedPlayers).every(p => p.vote);
-      if (allVoted) {
-        processVotingResults(updatedPlayers);
       }
       setInputText('');
       return;
     }
 
-    // Handle Game Turns
+    // 3. Handle Voting
+    if (!recipient && imposterState.status === 'voting' && trimmedInput.toLowerCase().startsWith('vote ')) {
+      const targetUsername = trimmedInput.substring(5).trim();
+      const player = imposterState.players[currentUser.username];
+      if (player && !player.vote) {
+        const target = Object.keys(imposterState.players).find(u => u.toLowerCase() === targetUsername.toLowerCase());
+        if (target) {
+          GunService.imposter.get('players').get(currentUser.username).get('vote').put(target);
+          sendSystemMessage(`You voted for ${target}.`);
+          const updatedPlayers = { ...imposterState.players };
+          updatedPlayers[currentUser.username].vote = target;
+          if (Object.values(updatedPlayers).every(p => p.vote)) processVotingResults(updatedPlayers);
+        } else {
+          sendSystemMessage('Invalid player to vote for.');
+        }
+      } else if (player?.vote) {
+        sendSystemMessage('You have already voted.');
+      }
+      setInputText('');
+      return;
+    }
+
+    // 4. Handle Imposter Game Turns
     if (!recipient && imposterState.status === 'turns') {
-      const playerList = Object.keys(imposterState.players).sort(); // Use consistent order
+      const playerList = Object.keys(imposterState.players).sort();
       const currentPlayer = playerList[imposterState.turnIndex];
       if (currentPlayer === currentUser.username) {
-        // Send message with game flag
         sendChatMessage(trimmedInput, true);
-        
         const nextIndex = imposterState.turnIndex + 1;
         if (nextIndex >= playerList.length) {
           GunService.imposter.get('status').put('discussion');
           GunService.imposter.get('config').get('discussionEndTime').put(Date.now() + 60000);
-          sendSystemMessage("All players have spoken! Discussion phase starts now. You have 1 minute to discuss.");
+          sendSystemMessage("Discussion phase starts! 1 minute remaining.");
         } else {
           GunService.imposter.get('config').get('turnIndex').put(nextIndex);
           sendSystemMessage(`It's ${playerList[nextIndex]}'s turn.`);
@@ -427,60 +433,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       }
     }
 
-    // Handle Wordle Commands
-    if (!recipient && trimmedInput.toLowerCase().startsWith('/wordle')) {
-      const command = trimmedInput.toLowerCase();
-      
-      if (command === '/wordle cancel') {
-        if (!wordleState?.active) {
-          sendSystemMessage('No Wordle game is currently in progress.');
-        } else {
-          const revealedWord = wordleState.word;
-          sendSystemMessage(`🚫 **Wordle Cancelled!**\n\nThe word was: **${revealedWord}**\n\n*Game ended by ${currentUser.username}*`);
-          
-          // Reset game
-          GunService.wordle.put({
-            active: false,
-            word: '',
-            guesses: 0,
-            startTime: 0
-          });
-        }
-        setInputText('');
-        return;
-      }
-
-      if (command === '/wordle') {
-        if (wordleState?.active) {
-          sendSystemMessage('A Wordle game is already in progress!');
-        } else {
-          const randomWord = WORDLE_WORDS[Math.floor(Math.random() * WORDLE_WORDS.length)];
-          GunService.wordle.put({
-            active: true,
-            word: randomWord,
-            guesses: 0,
-            startTime: Date.now()
-          });
-          sendSystemMessage('🎮 **Multiplayer Wordle Started!** Guess the 5-letter word by typing `guess <word>`.');
-        }
-        setInputText('');
-        return;
-      }
-    }
-
-    if (!recipient && trimmedInput.toLowerCase().startsWith('guess ')) {
-      if (wordleState?.active) {
-        const guess = trimmedInput.split(' ')[1]?.toUpperCase();
-        if (!guess || guess.length !== 5) {
-          sendSystemMessage('Your guess must be a valid 5-letter word.');
-          setInputText('');
-          return;
-        }
-
-        // Process Wordle logic but ALSO send the message so others see the guess
-        processWordleGuess(guess);
-      }
-    }
+    // 5. Regular Message Sending (Lobby or Private)
 
     const chatNode = recipient 
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
