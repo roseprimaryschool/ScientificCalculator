@@ -270,26 +270,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             <p className="text-zinc-500 text-xs">{recipient ? (recipientData?.presence || 'offline') : 'Everyone is here'}</p>
           </div>
         </div>
-        
-        {!isConnected && (
-          <div className="ml-auto flex items-center gap-2 px-3 py-1 bg-yellow-500/10 border border-yellow-500/20 rounded-lg">
-            <div className="w-2 h-2 rounded-full bg-yellow-500 animate-pulse"></div>
-            <span className="text-[10px] font-bold text-yellow-500 uppercase tracking-wider">Network Syncing...</span>
-            <button 
-              onClick={() => window.location.reload()}
-              className="text-[9px] bg-yellow-500/20 hover:bg-yellow-500/30 text-yellow-600 px-1.5 py-0.5 rounded transition-colors"
-            >
-              Refresh
-            </button>
-          </div>
-        )}
-        
-        {isConnected && !isAuth && (
-          <div className="ml-auto flex items-center gap-2 px-3 py-1 bg-blue-500/10 border border-blue-500/20 rounded-lg">
-            <div className="w-2 h-2 rounded-full bg-blue-500 animate-pulse"></div>
-            <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">Verifying Identity...</span>
-          </div>
-        )}
       </div>
 
       <div 
