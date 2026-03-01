@@ -50,29 +50,6 @@ const WORDLE_WORDS = [
   'WORST', 'WORTH', 'WRITE', 'WRONG', 'WROTE', 'YIELD', 'YOUNG', 'YOUTH'
 ];
 
-const IMPOSTER_TOPICS = [
-  { crew: 'Lion', imposter: 'A Big Cat' },
-  { crew: 'Pizza', imposter: 'A type of fast food' },
-  { crew: 'France', imposter: 'A country in Europe' },
-  { crew: 'Coffee', imposter: 'A popular morning drink' },
-  { crew: 'Sushi', imposter: 'A dish from Asia' },
-  { crew: 'Elephant', imposter: 'A very large animal' },
-  { crew: 'Guitar', imposter: 'A stringed instrument' },
-  { crew: 'Mars', imposter: 'A planet in our solar system' },
-  { crew: 'Titanic', imposter: 'A famous historical ship' },
-  { crew: 'Basketball', imposter: 'A team sport with a ball' },
-  { crew: 'Apple', imposter: 'A common fruit' },
-  { crew: 'London', imposter: 'A major city in Europe' },
-  { crew: 'Minecraft', imposter: 'A popular video game' },
-  { crew: 'Spider-Man', imposter: 'A famous superhero' },
-  { crew: 'Tesla', imposter: 'An electric car brand' },
-  { crew: 'Harry Potter', imposter: 'A famous book character' },
-  { crew: 'YouTube', imposter: 'A video sharing platform' },
-  { crew: 'Amazon', imposter: 'A large online retailer' },
-  { crew: 'Star Wars', imposter: 'A famous space movie franchise' },
-  { crew: 'The Eiffel Tower', imposter: 'A famous landmark in Paris' }
-];
-
 interface ChatViewProps {
   currentUser: User;
   recipient?: string; // undefined for lobby
@@ -85,22 +62,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
   const [recipientData, setRecipientData] = useState<{ presence?: string, statusMessage?: string } | null>(null);
   const [isConnected, setIsConnected] = useState(true);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isSyncing, setIsSyncing] = useState(false);
   const [isAuth, setIsAuth] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [wordleState, setWordleState] = useState<{ active: boolean, word: string, guesses: number } | null>(null);
-  const [imposterState, setImposterState] = useState<{
-    status: string,
-    players: string[],
-    imposter: string,
-    topic: string,
-    imposterTopic: string,
-    turnIndex: number,
-    votes: Record<string, string>,
-    startTime: number,
-    phaseEndTime?: number
-  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -116,98 +80,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       }
     });
 
-    // Listen for Imposter state
-    const imposterNode = GunService.imposter;
-    
-    imposterNode.on((data: any) => {
-      if (data) {
-        setImposterState(prev => {
-          const newState = {
-            ...prev,
-            status: data.status || 'inactive',
-            imposter: data.imposter || '',
-            topic: data.topic || '',
-            imposterTopic: data.imposterTopic || '',
-            turnIndex: typeof data.turnIndex === 'number' ? data.turnIndex : parseInt(data.turnIndex || '0'),
-            startTime: data.startTime || 0,
-            phaseEndTime: data.phaseEndTime || 0,
-            players: prev?.players || [],
-            votes: prev?.votes || {}
-          } as any;
-          return newState;
-        });
-      } else {
-        setImposterState(null);
-      }
-    });
-
-    // Listen for players separately
-    imposterNode.get('players_list').map().on((val: any, user: string) => {
-      setImposterState(prev => {
-        const players = prev?.players || [];
-        if (val) {
-          if (!players.includes(user)) {
-            const newPlayers = [...players, user].sort();
-            return { ...prev!, players: newPlayers };
-          }
-        } else {
-          const newPlayers = players.filter(p => p !== user).sort();
-          return { ...prev!, players: newPlayers };
-        }
-        return prev;
-      });
-    });
-
-    // Listen for votes separately
-    imposterNode.get('votes_list').map().on((target: any, voter: string) => {
-      setImposterState(prev => {
-        const votes = prev?.votes || {};
-        if (target) {
-          return { ...prev!, votes: { ...votes, [voter]: target } };
-        } else {
-          const newVotes = { ...votes };
-          delete newVotes[voter];
-          return { ...prev!, votes: newVotes };
-        }
-      });
-    });
-
     return () => {
       GunService.wordle.off();
-      imposterNode.off();
-      imposterNode.get('players_list').off();
-      imposterNode.get('votes_list').off();
     };
   }, []);
-
-  useEffect(() => {
-    if (imposterState?.status === 'voting' && imposterState.players.length > 0) {
-      const voteCount = Object.keys(imposterState.votes).length;
-      if (voteCount === imposterState.players.length) {
-        // Only the first player in the alphabetical list processes it to avoid multiple messages
-        const sortedPlayers = [...imposterState.players].sort();
-        if (currentUser.username === sortedPlayers[0]) {
-          processImposterVotes(imposterState.votes);
-        }
-      }
-    }
-  }, [imposterState?.votes, imposterState?.status, imposterState?.players, currentUser.username]);
-
-  useEffect(() => {
-    if (imposterState?.status === 'discussing' && imposterState.phaseEndTime) {
-      const checkDiscussion = setInterval(() => {
-        if (Date.now() >= imposterState.phaseEndTime!) {
-          clearInterval(checkDiscussion);
-          // Only the first player in the alphabetical list processes it
-          const sortedPlayers = [...imposterState.players].sort();
-          if (currentUser.username === sortedPlayers[0]) {
-            startImposterVoting();
-          }
-        }
-      }, 1000);
-      return () => clearInterval(checkDiscussion);
-    }
-  }, [imposterState?.status, imposterState?.phaseEndTime, imposterState?.players, currentUser.username]);
 
   useEffect(() => {
     // Track auth status
@@ -273,18 +149,11 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
   useEffect(() => {
     // Gun.js real-time listener
-    setIsLoading(true);
     const chatNode = recipient 
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
       : gun.get('calcchat_lobby_v2');
 
-    // Set a timeout to stop loading if no messages arrive
-    const loadingTimeout = setTimeout(() => setIsLoading(false), 3000);
-
     chatNode.map().on((msg: any, id: string) => {
-      setIsLoading(false);
-      clearTimeout(loadingTimeout);
-      
       if (msg === null) {
         setMessages(prev => prev.filter(m => m.id !== id));
         return;
@@ -301,13 +170,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             sender_pic: msg.sender_pic,
             text: msg.text || '',
             timestamp: msg.timestamp || Date.now(),
-            reactions: (() => {
-              try {
-                return typeof msg.reactions === 'string' ? JSON.parse(msg.reactions) : (Array.isArray(msg.reactions) ? msg.reactions : []);
-              } catch (e) {
-                return [];
-              }
-            })(),
+            reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
             recipient: msg.recipient,
             image: msg.image
           };
@@ -327,7 +190,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     return () => {
       chatNode.off();
       setMessages([]);
-      clearTimeout(loadingTimeout);
     };
   }, [recipient, currentUser.username]);
 
@@ -398,131 +260,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       }
     }
 
-    // Handle Imposter Commands
-    if (!recipient && trimmedInput.toLowerCase().startsWith('/imposter')) {
-      const command = trimmedInput.toLowerCase();
-      
-      if (command === '/imposter') {
-        if (imposterState && imposterState.status !== 'inactive') {
-          sendSystemMessage('An Imposter game is already in progress!');
-        } else {
-          // Reset the entire game state
-          const imposterNode = GunService.imposter;
-          
-          // Clear players properly by setting each to null
-          if (imposterState?.players) {
-            imposterState.players.forEach(p => {
-              imposterNode.get('players_list').get(p).put(null);
-            });
-          }
-          
-          imposterNode.put({
-            status: 'lobby',
-            imposter: '',
-            topic: '',
-            imposterTopic: '',
-            turnIndex: 0,
-            startTime: Date.now(),
-            phaseEndTime: 0
-          });
-          
-          // Clear sub-nodes
-          imposterNode.get('players_list').put(null);
-          imposterNode.get('votes_list').put(null);
-          
-          // Reset local state immediately for the starter
-          setImposterState({
-            status: 'lobby',
-            players: [],
-            imposter: '',
-            topic: '',
-            imposterTopic: '',
-            turnIndex: 0,
-            votes: {},
-            startTime: Date.now(),
-            phaseEndTime: 0
-          });
-
-          sendSystemMessage('🕵️ **A new Imposter game is forming!** Type `/imposter join` to participate.');
-        }
-        setInputText('');
-        return;
-      }
-
-      if (command === '/imposter join') {
-        if (!imposterState || imposterState.status !== 'lobby') {
-          // If state is null, it might be syncing. Try to fetch once.
-          GunService.imposter.once((data: any) => {
-            if (data && data.status === 'lobby') {
-              sendSystemMessage('Game state synced. Please try joining again!');
-            } else {
-              sendSystemMessage('No Imposter game is currently forming.');
-            }
-          });
-        } else if (imposterState.players.includes(currentUser.username)) {
-          sendSystemMessage('You’re already in the game.');
-        } else {
-          GunService.imposter.get('players_list').get(currentUser.username).put(true);
-          sendSystemMessage(`✅ **${currentUser.username}** joined the Imposter game!`);
-          
-          // If it's the first player joining, ensure the status is set correctly
-          if (imposterState.players.length === 0) {
-            GunService.imposter.get('status').put('lobby');
-          }
-        }
-        setInputText('');
-        return;
-      }
-
-      if (command === '/imposter start') {
-        if (!imposterState || imposterState.status !== 'lobby') {
-          sendSystemMessage('No Imposter game is currently forming.');
-        } else if (imposterState.players.length < 3) {
-          sendSystemMessage(`The game needs at least 3 players. Current: ${imposterState.players.length}`);
-        } else {
-          startImposterGame();
-        }
-        setInputText('');
-        return;
-      }
-
-      if (command === '/imposter cancel') {
-        const imposterNode = GunService.imposter;
-        imposterNode.get('status').put('inactive');
-        
-        // Clear players properly by setting each to null
-        if (imposterState?.players) {
-          imposterState.players.forEach(p => {
-            imposterNode.get('players_list').get(p).put(null);
-          });
-        }
-        
-        imposterNode.get('players_list').put(null);
-        imposterNode.get('votes_list').put(null);
-        sendSystemMessage('🕵️ **Imposter game cancelled.**');
-        setInputText('');
-        return;
-      }
-    }
-
-    if (!recipient && trimmedInput.toLowerCase().startsWith('vote ')) {
-      if (imposterState?.status === 'voting') {
-        const target = trimmedInput.split(' ')[1];
-        if (!target || !imposterState.players.includes(target)) {
-          sendSystemMessage('Invalid target. Vote for a player in the game.');
-        } else if (!imposterState.players.includes(currentUser.username)) {
-          sendSystemMessage('Only players in the game can vote.');
-        } else {
-          GunService.imposter.get('votes_list').get(currentUser.username).put(target);
-          sendSystemMessage(`🗳️ **${currentUser.username}** has voted!`);
-          
-          // Check if everyone has voted (will be handled in the listener for final processing)
-        }
-        setInputText('');
-        return;
-      }
-    }
-
     const chatNode = recipient 
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
       : gun.get('calcchat_lobby_v2');
@@ -538,26 +275,8 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       reactions: '[]'
     };
 
-    // If it's the Imposter game turn, advance the turn
-    if (!recipient && imposterState?.status === 'playing' && imposterState.players.includes(currentUser.username)) {
-      const currentPlayer = imposterState.players[imposterState.turnIndex];
-      if (currentUser.username === currentPlayer) {
-        const nextTurn = imposterState.turnIndex + 1;
-        GunService.imposter.get('turnIndex').put(nextTurn);
-        if (nextTurn >= imposterState.players.length) {
-          startImposterDiscussion();
-        }
-      } else {
-        sendSystemMessage(`It's not your turn! It's **${currentPlayer}**'s turn.`);
-        setInputText('');
-        return;
-      }
-    }
-
     // Use a callback to ensure Gun processes the put
-    setIsSyncing(true);
     chatNode.get(msgId).put(msgData, (ack: any) => {
-      setIsSyncing(false);
       if (ack.err) {
         console.error('Gun.js send error:', ack.err);
         // Retry once after a short delay if it failed
@@ -578,128 +297,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
     setInputText('');
     setSelectedImage(null);
-  };
-
-  const startImposterGame = () => {
-    if (!imposterState) return;
-    const players = [...imposterState.players].sort();
-    const imposterIndex = Math.floor(Math.random() * players.length);
-    const imposter = players[imposterIndex];
-    const topicPair = IMPOSTER_TOPICS[Math.floor(Math.random() * IMPOSTER_TOPICS.length)];
-
-    GunService.imposter.put({
-      status: 'playing',
-      imposter,
-      topic: topicPair.crew,
-      imposterTopic: topicPair.imposter,
-      turnIndex: 0,
-      startTime: Date.now(),
-      phaseEndTime: 0
-    });
-    // Clear votes for the new game
-    GunService.imposter.get('votes_list').put(null);
-
-    sendSystemMessage('🕵️ **The Imposter game is starting!** Roles have been assigned.');
-
-    // Send private messages
-    players.forEach(player => {
-      const isImposter = player === imposter;
-      const roleText = isImposter 
-        ? `🎭 **You are the IMPOSTER!**\n\nYour vague topic: **${topicPair.imposter}**\n\nTry to blend in with the Crewmates!`
-        : `🛡️ **You are a CREWMATE!**\n\nYour specific topic: **${topicPair.crew}**\n\nFind the Imposter!`;
-      
-      const privateNode = gun.get('calcchat_private_v2').get([player, 'System'].sort().join('_'));
-      privateNode.get(uuidv4()).put({
-        sender: 'System',
-        sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=System',
-        text: roleText,
-        timestamp: Date.now(),
-        recipient: player,
-        reactions: '[]'
-      });
-    });
-
-    sendSystemMessage(`It's **${players[0]}**'s turn to speak!`);
-  };
-
-  const startImposterDiscussion = () => {
-    const endTime = Date.now() + 60000;
-    GunService.imposter.put({
-      status: 'discussing',
-      phaseEndTime: endTime
-    });
-    sendSystemMessage('🗣️ **Discussion Phase!** You have 1 minute to discuss who the Imposter is.');
-  };
-
-  const startImposterVoting = () => {
-    GunService.imposter.put({
-      status: 'voting',
-      phaseEndTime: 0
-    });
-    sendSystemMessage('🗳️ **Voting Phase!** Type `vote username` to cast your vote.');
-  };
-
-  const processImposterVotes = (votes: Record<string, string>) => {
-    if (!imposterState) return;
-    const voteCounts: Record<string, number> = {};
-    Object.values(votes).forEach(target => {
-      voteCounts[target] = (voteCounts[target] || 0) + 1;
-    });
-
-    let maxVotes = 0;
-    let votedOut = '';
-    let tie = false;
-
-    Object.entries(voteCounts).forEach(([target, count]) => {
-      if (count > maxVotes) {
-        maxVotes = count;
-        votedOut = target;
-        tie = false;
-      } else if (count === maxVotes) {
-        tie = true;
-      }
-    });
-
-    if (tie) {
-      sendSystemMessage('⚖️ **It\'s a tie!** No one was voted out. The Imposter wins!');
-      revealImposterResult(false);
-    } else {
-      const isImposter = votedOut === imposterState.imposter;
-      sendSystemMessage(`💀 **${votedOut}** was voted out!`);
-      if (isImposter) {
-        sendSystemMessage('✅ They WERE the Imposter! **Crewmates win!**');
-      } else {
-        sendSystemMessage('❌ They were NOT the Imposter! **Imposter wins!**');
-      }
-      revealImposterResult(isImposter);
-    }
-  };
-
-  const revealImposterResult = (crewWon: boolean) => {
-    if (!imposterState) return;
-    sendSystemMessage(`🕵️ The Imposter was: **${imposterState.imposter}**\nTopic: **${imposterState.topic}**\nImposter Topic: **${imposterState.imposterTopic}**`);
-    
-    setTimeout(() => {
-      const imposterNode = GunService.imposter;
-      
-      // Clear players properly by setting each to null
-      if (imposterState?.players) {
-        imposterState.players.forEach(p => {
-          imposterNode.get('players_list').get(p).put(null);
-        });
-      }
-
-      imposterNode.put({ 
-        status: 'inactive',
-        imposter: '',
-        topic: '',
-        imposterTopic: '',
-        turnIndex: 0,
-        phaseEndTime: 0
-      });
-      imposterNode.get('players_list').put(null);
-      imposterNode.get('votes_list').put(null);
-    }, 5000);
   };
 
   const sendSystemMessage = (text: string) => {
@@ -878,80 +475,27 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
                 <span className="text-[10px] text-emerald-500 font-normal italic">"{recipientData.statusMessage}"</span>
               )}
             </h3>
-            <div className="flex items-center gap-2">
-              <p className="text-zinc-500 text-xs">{recipient ? (recipientData?.presence || 'offline') : 'Everyone is here'}</p>
-              <div className="w-1 h-1 rounded-full bg-zinc-700" />
-              <div className="flex items-center gap-1.5">
-                <div className={`w-1.5 h-1.5 rounded-full ${isConnected ? 'bg-emerald-500' : 'bg-red-500 animate-pulse'}`} />
-                <span className="text-[9px] text-zinc-500 uppercase tracking-widest font-bold">
-                  {isConnected ? 'Live' : 'Syncing...'}
-                </span>
-              </div>
-            </div>
+            <p className="text-zinc-500 text-xs">{recipient ? (recipientData?.presence || 'offline') : 'Everyone is here'}</p>
           </div>
         </div>
         
-        <div className="ml-auto flex items-center gap-2">
-          {!recipient && wordleState?.active && (
-            <div className="flex items-center gap-3 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl animate-in fade-in slide-in-from-right-4">
-              <div className="flex flex-col items-end">
-                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Wordle Active</span>
-                <span className="text-[9px] text-emerald-400/70 font-mono">Guesses: {wordleState.guesses}</span>
-              </div>
-              <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-900/40">
-                <span className="text-white font-bold text-xs">W</span>
-              </div>
+        {!recipient && wordleState?.active && (
+          <div className="ml-auto flex items-center gap-3 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl animate-in fade-in slide-in-from-right-4">
+            <div className="flex flex-col items-end">
+              <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Wordle Active</span>
+              <span className="text-[9px] text-emerald-400/70 font-mono">Guesses: {wordleState.guesses}</span>
             </div>
-          )}
-
-          {!recipient && imposterState && imposterState.status !== 'inactive' && (
-            <div className={`flex items-center gap-3 px-4 py-2 border rounded-2xl animate-in fade-in slide-in-from-right-4 ${
-              imposterState.status === 'lobby' ? 'bg-blue-500/10 border-blue-500/20' : 'bg-red-500/10 border-red-500/20'
-            }`}>
-              <div className="flex flex-col items-end">
-                <span className={`text-[10px] font-black uppercase tracking-widest ${
-                  imposterState.status === 'lobby' ? 'text-blue-500' : 'text-red-500'
-                }`}>
-                  {imposterState.status === 'lobby' ? 'Imposter Lobby' : 'Imposter Game'}
-                </span>
-                <span className={`text-[9px] font-mono ${
-                  imposterState.status === 'lobby' ? 'text-blue-400/70' : 'text-red-400/70'
-                }`}>
-                  {imposterState.status === 'lobby' ? `${imposterState.players.length} Players` : 
-                   imposterState.status === 'playing' ? `Turn: ${imposterState.players[imposterState.turnIndex]}` : 
-                   imposterState.status === 'discussing' ? 'Discussing...' : 'Voting...'}
-                </span>
-              </div>
-              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-lg ${
-                imposterState.status === 'lobby' ? 'bg-blue-500 shadow-blue-900/40' : 'bg-red-500 shadow-red-900/40'
-              }`}>
-                <span className="text-white font-bold text-xs">I</span>
-              </div>
+            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-900/40">
+              <span className="text-white font-bold text-xs">W</span>
             </div>
-          )}
-        </div>
+          </div>
+        )}
       </div>
 
       <div 
         ref={scrollRef}
-        className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide relative"
+        className="flex-1 overflow-y-auto p-4 space-y-2 scrollbar-hide"
       >
-        {isLoading && messages.length === 0 && (
-          <div className="absolute inset-0 flex items-center justify-center bg-zinc-900/10 backdrop-blur-[1px] z-10">
-            <div className="flex flex-col items-center gap-2">
-              <div className="w-6 h-6 border-2 border-emerald-500/50 border-t-emerald-500 rounded-full animate-spin" />
-              <span className="text-[9px] text-emerald-500/70 font-bold uppercase tracking-widest">Syncing History...</span>
-            </div>
-          </div>
-        )}
-
-        {messages.length === 0 && !isLoading && (
-          <div className="flex flex-col items-center justify-center h-full text-zinc-600 space-y-2 opacity-50">
-            <Hash className="w-12 h-12" />
-            <p className="text-sm font-medium">No messages yet. Start the conversation!</p>
-          </div>
-        )}
-
         {messages.map((msg: any) => {
           return (
             <div key={msg.id}>
@@ -1011,18 +555,9 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
           />
           <button
             type="submit"
-            disabled={(!inputText.trim() && !selectedImage) || isSyncing}
-            className={`p-3 rounded-xl transition-all active:scale-95 shadow-lg ${
-              (!inputText.trim() && !selectedImage) || isSyncing
-                ? 'bg-zinc-800 text-zinc-600 cursor-not-allowed'
-                : 'bg-emerald-600 text-white hover:bg-emerald-500 shadow-emerald-900/20'
-            }`}
+            className="bg-emerald-600 hover:bg-emerald-500 text-white p-3 rounded-xl transition-all active:scale-95 shadow-lg shadow-emerald-900/20"
           >
-            {isSyncing ? (
-              <div className="w-5 h-5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-            ) : (
-              <Send className="w-5 h-5" />
-            )}
+            <Send className="w-5 h-5" />
           </button>
         </div>
       </form>
