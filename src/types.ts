@@ -55,3 +55,20 @@ export interface WordleState {
   guesses: number;
   startTime: number;
 }
+
+export interface ImposterPlayer {
+  username: string;
+  role?: 'crew' | 'imposter';
+  topic?: string;
+  hasSpoken: boolean;
+  vote?: string;
+}
+
+export interface ImposterState {
+  status: 'idle' | 'lobby' | 'turns' | 'discussion' | 'voting';
+  players: Record<string, ImposterPlayer>;
+  currentTopic?: { crew: string; imposter: string };
+  turnIndex: number;
+  startTime: number;
+  discussionEndTime?: number;
+}
