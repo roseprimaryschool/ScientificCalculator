@@ -54,3 +54,14 @@ export interface WordleState {
   guesses: number;
   startTime: number;
 }
+
+export interface ImposterState {
+  status: 'inactive' | 'lobby' | 'playing' | 'discussing' | 'voting';
+  players: string[];
+  imposter: string;
+  topic: string;
+  imposterTopic: string;
+  turnIndex: number;
+  votes: Record<string, string>;
+  startTime: number;
+}

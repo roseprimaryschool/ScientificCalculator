@@ -50,6 +50,29 @@ const WORDLE_WORDS = [
   'WORST', 'WORTH', 'WRITE', 'WRONG', 'WROTE', 'YIELD', 'YOUNG', 'YOUTH'
 ];
 
+const IMPOSTER_TOPICS = [
+  { crew: 'Lion', imposter: 'A Big Cat' },
+  { crew: 'Pizza', imposter: 'A type of fast food' },
+  { crew: 'France', imposter: 'A country in Europe' },
+  { crew: 'Coffee', imposter: 'A popular morning drink' },
+  { crew: 'Sushi', imposter: 'A dish from Asia' },
+  { crew: 'Elephant', imposter: 'A very large animal' },
+  { crew: 'Guitar', imposter: 'A stringed instrument' },
+  { crew: 'Mars', imposter: 'A planet in our solar system' },
+  { crew: 'Titanic', imposter: 'A famous historical ship' },
+  { crew: 'Basketball', imposter: 'A team sport with a ball' },
+  { crew: 'Apple', imposter: 'A common fruit' },
+  { crew: 'London', imposter: 'A major city in Europe' },
+  { crew: 'Minecraft', imposter: 'A popular video game' },
+  { crew: 'Spider-Man', imposter: 'A famous superhero' },
+  { crew: 'Tesla', imposter: 'An electric car brand' },
+  { crew: 'Harry Potter', imposter: 'A famous book character' },
+  { crew: 'YouTube', imposter: 'A video sharing platform' },
+  { crew: 'Amazon', imposter: 'A large online retailer' },
+  { crew: 'Star Wars', imposter: 'A famous space movie franchise' },
+  { crew: 'The Eiffel Tower', imposter: 'A famous landmark in Paris' }
+];
+
 interface ChatViewProps {
   currentUser: User;
   recipient?: string; // undefined for lobby
@@ -65,6 +88,15 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [isAuth, setIsAuth] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [wordleState, setWordleState] = useState<{ active: boolean, word: string, guesses: number } | null>(null);
+  const [imposterState, setImposterState] = useState<{
+    status: string,
+    players: string[],
+    imposter: string,
+    topic: string,
+    imposterTopic: string,
+    turnIndex: number,
+    votes: Record<string, string>
+  } | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -80,8 +112,24 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       }
     });
 
+    // Listen for Imposter state
+    GunService.imposter.on((data: any) => {
+      if (data) {
+        setImposterState({
+          status: data.status || 'inactive',
+          players: data.players ? JSON.parse(data.players) : [],
+          imposter: data.imposter || '',
+          topic: data.topic || '',
+          imposterTopic: data.imposterTopic || '',
+          turnIndex: data.turnIndex || 0,
+          votes: data.votes ? JSON.parse(data.votes) : {}
+        });
+      }
+    });
+
     return () => {
       GunService.wordle.off();
+      GunService.imposter.off();
     };
   }, []);
 
@@ -260,6 +308,89 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       }
     }
 
+    // Handle Imposter Commands
+    if (!recipient && trimmedInput.toLowerCase().startsWith('/imposter')) {
+      const command = trimmedInput.toLowerCase();
+      
+      if (command === '/imposter') {
+        if (imposterState && imposterState.status !== 'inactive') {
+          sendSystemMessage('An Imposter game is already in progress!');
+        } else {
+          GunService.imposter.put({
+            status: 'lobby',
+            players: JSON.stringify([]),
+            imposter: '',
+            topic: '',
+            imposterTopic: '',
+            turnIndex: 0,
+            votes: JSON.stringify({}),
+            startTime: Date.now()
+          });
+          sendSystemMessage('🕵️ **A new Imposter game is forming!** Type `/imposter join` to participate.');
+        }
+        setInputText('');
+        return;
+      }
+
+      if (command === '/imposter join') {
+        if (!imposterState || imposterState.status !== 'lobby') {
+          sendSystemMessage('No Imposter game is currently forming.');
+        } else if (imposterState.players.includes(currentUser.username)) {
+          sendSystemMessage('You’re already in the game.');
+        } else {
+          const newPlayers = [...imposterState.players, currentUser.username];
+          GunService.imposter.get('players').put(JSON.stringify(newPlayers));
+          sendSystemMessage(`✅ **${currentUser.username}** joined the Imposter game! (${newPlayers.length} players)`);
+          if (newPlayers.length >= 3) {
+            sendSystemMessage('Type `/imposter start` to begin the game!');
+          }
+        }
+        setInputText('');
+        return;
+      }
+
+      if (command === '/imposter start') {
+        if (!imposterState || imposterState.status !== 'lobby') {
+          sendSystemMessage('No Imposter game is currently forming.');
+        } else if (imposterState.players.length < 3) {
+          sendSystemMessage('The game can only start when at least 3 players have joined.');
+        } else {
+          startImposterGame();
+        }
+        setInputText('');
+        return;
+      }
+
+      if (command === '/imposter cancel') {
+        GunService.imposter.put({ status: 'inactive' });
+        sendSystemMessage('🕵️ **Imposter game cancelled.**');
+        setInputText('');
+        return;
+      }
+    }
+
+    if (!recipient && trimmedInput.toLowerCase().startsWith('vote ')) {
+      if (imposterState?.status === 'voting') {
+        const target = trimmedInput.split(' ')[1];
+        if (!target || !imposterState.players.includes(target)) {
+          sendSystemMessage('Invalid target. Vote for a player in the game.');
+        } else if (!imposterState.players.includes(currentUser.username)) {
+          sendSystemMessage('Only players in the game can vote.');
+        } else {
+          const newVotes = { ...imposterState.votes, [currentUser.username]: target };
+          GunService.imposter.get('votes').put(JSON.stringify(newVotes));
+          sendSystemMessage(`🗳️ **${currentUser.username}** has voted!`);
+          
+          // Check if everyone has voted
+          if (Object.keys(newVotes).length === imposterState.players.length) {
+            processImposterVotes(newVotes);
+          }
+        }
+        setInputText('');
+        return;
+      }
+    }
+
     const chatNode = recipient 
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
       : gun.get('calcchat_lobby_v2');
@@ -274,6 +405,22 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       recipient: recipient || '',
       reactions: '[]'
     };
+
+    // If it's the Imposter game turn, advance the turn
+    if (!recipient && imposterState?.status === 'playing') {
+      const currentPlayer = imposterState.players[imposterState.turnIndex];
+      if (currentUser.username === currentPlayer) {
+        const nextTurn = imposterState.turnIndex + 1;
+        GunService.imposter.get('turnIndex').put(nextTurn);
+        if (nextTurn >= imposterState.players.length) {
+          startImposterDiscussion();
+        }
+      } else {
+        sendSystemMessage(`It's not your turn! It's **${currentPlayer}**'s turn.`);
+        setInputText('');
+        return;
+      }
+    }
 
     // Use a callback to ensure Gun processes the put
     chatNode.get(msgId).put(msgData, (ack: any) => {
@@ -297,6 +444,105 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
     setInputText('');
     setSelectedImage(null);
+  };
+
+  const startImposterGame = () => {
+    if (!imposterState) return;
+    const players = imposterState.players;
+    const imposterIndex = Math.floor(Math.random() * players.length);
+    const imposter = players[imposterIndex];
+    const topicPair = IMPOSTER_TOPICS[Math.floor(Math.random() * IMPOSTER_TOPICS.length)];
+
+    GunService.imposter.put({
+      status: 'playing',
+      imposter,
+      topic: topicPair.crew,
+      imposterTopic: topicPair.imposter,
+      turnIndex: 0,
+      votes: JSON.stringify({}),
+      startTime: Date.now()
+    });
+
+    sendSystemMessage('🕵️ **The Imposter game is starting!** Roles have been assigned.');
+
+    // Send private messages
+    players.forEach(player => {
+      const isImposter = player === imposter;
+      const roleText = isImposter 
+        ? `🎭 **You are the IMPOSTER!**\n\nYour vague topic: **${topicPair.imposter}**\n\nTry to blend in with the Crewmates!`
+        : `🛡️ **You are a CREWMATE!**\n\nYour specific topic: **${topicPair.crew}**\n\nFind the Imposter!`;
+      
+      const privateNode = gun.get('calcchat_private_v2').get([player, 'System'].sort().join('_'));
+      privateNode.get(uuidv4()).put({
+        sender: 'System',
+        sender_pic: 'https://api.dicebear.com/7.x/bottts/svg?seed=System',
+        text: roleText,
+        timestamp: Date.now(),
+        recipient: player,
+        reactions: '[]'
+      });
+    });
+
+    sendSystemMessage(`It's **${players[0]}**'s turn to speak!`);
+  };
+
+  const startImposterDiscussion = () => {
+    GunService.imposter.get('status').put('discussing');
+    sendSystemMessage('🗣️ **Discussion Phase!** You have 1 minute to discuss who the Imposter is.');
+    
+    setTimeout(() => {
+      startImposterVoting();
+    }, 60000);
+  };
+
+  const startImposterVoting = () => {
+    GunService.imposter.get('status').put('voting');
+    sendSystemMessage('🗳️ **Voting Phase!** Type `vote username` to cast your vote.');
+  };
+
+  const processImposterVotes = (votes: Record<string, string>) => {
+    if (!imposterState) return;
+    const voteCounts: Record<string, number> = {};
+    Object.values(votes).forEach(target => {
+      voteCounts[target] = (voteCounts[target] || 0) + 1;
+    });
+
+    let maxVotes = 0;
+    let votedOut = '';
+    let tie = false;
+
+    Object.entries(voteCounts).forEach(([target, count]) => {
+      if (count > maxVotes) {
+        maxVotes = count;
+        votedOut = target;
+        tie = false;
+      } else if (count === maxVotes) {
+        tie = true;
+      }
+    });
+
+    if (tie) {
+      sendSystemMessage('⚖️ **It\'s a tie!** No one was voted out. The Imposter wins!');
+      revealImposterResult(false);
+    } else {
+      const isImposter = votedOut === imposterState.imposter;
+      sendSystemMessage(`💀 **${votedOut}** was voted out!`);
+      if (isImposter) {
+        sendSystemMessage('✅ They WERE the Imposter! **Crewmates win!**');
+      } else {
+        sendSystemMessage('❌ They were NOT the Imposter! **Imposter wins!**');
+      }
+      revealImposterResult(isImposter);
+    }
+  };
+
+  const revealImposterResult = (crewWon: boolean) => {
+    if (!imposterState) return;
+    sendSystemMessage(`🕵️ The Imposter was: **${imposterState.imposter}**\nTopic: **${imposterState.topic}**\nImposter Topic: **${imposterState.imposterTopic}**`);
+    
+    setTimeout(() => {
+      GunService.imposter.put({ status: 'inactive' });
+    }, 5000);
   };
 
   const sendSystemMessage = (text: string) => {
@@ -479,17 +725,45 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
           </div>
         </div>
         
-        {!recipient && wordleState?.active && (
-          <div className="ml-auto flex items-center gap-3 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl animate-in fade-in slide-in-from-right-4">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Wordle Active</span>
-              <span className="text-[9px] text-emerald-400/70 font-mono">Guesses: {wordleState.guesses}</span>
+        <div className="ml-auto flex items-center gap-2">
+          {!recipient && wordleState?.active && (
+            <div className="flex items-center gap-3 px-4 py-2 bg-emerald-500/10 border border-emerald-500/20 rounded-2xl animate-in fade-in slide-in-from-right-4">
+              <div className="flex flex-col items-end">
+                <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest">Wordle Active</span>
+                <span className="text-[9px] text-emerald-400/70 font-mono">Guesses: {wordleState.guesses}</span>
+              </div>
+              <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-900/40">
+                <span className="text-white font-bold text-xs">W</span>
+              </div>
             </div>
-            <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-900/40">
-              <span className="text-white font-bold text-xs">W</span>
+          )}
+
+          {!recipient && imposterState && imposterState.status !== 'inactive' && (
+            <div className={`flex items-center gap-3 px-4 py-2 border rounded-2xl animate-in fade-in slide-in-from-right-4 ${
+              imposterState.status === 'lobby' ? 'bg-blue-500/10 border-blue-500/20' : 'bg-red-500/10 border-red-500/20'
+            }`}>
+              <div className="flex flex-col items-end">
+                <span className={`text-[10px] font-black uppercase tracking-widest ${
+                  imposterState.status === 'lobby' ? 'text-blue-500' : 'text-red-500'
+                }`}>
+                  {imposterState.status === 'lobby' ? 'Imposter Lobby' : 'Imposter Game'}
+                </span>
+                <span className={`text-[9px] font-mono ${
+                  imposterState.status === 'lobby' ? 'text-blue-400/70' : 'text-red-400/70'
+                }`}>
+                  {imposterState.status === 'lobby' ? `${imposterState.players.length} Players` : 
+                   imposterState.status === 'playing' ? `Turn: ${imposterState.players[imposterState.turnIndex]}` : 
+                   imposterState.status === 'discussing' ? 'Discussing...' : 'Voting...'}
+                </span>
+              </div>
+              <div className={`w-8 h-8 rounded-lg flex items-center justify-center shadow-lg ${
+                imposterState.status === 'lobby' ? 'bg-blue-500 shadow-blue-900/40' : 'bg-red-500 shadow-red-900/40'
+              }`}>
+                <span className="text-white font-bold text-xs">I</span>
+              </div>
             </div>
-          </div>
-        )}
+          )}
+        </div>
       </div>
 
       <div 
