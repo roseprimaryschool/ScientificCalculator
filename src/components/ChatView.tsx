@@ -6,24 +6,6 @@ import { gun, user as gunUser, GunService } from '../services/gun';
 import { ApiService } from '../services/api';
 import { v4 as uuidv4 } from 'uuid';
 
-const TOPICS = [
-  { crew: "Lion", imposter: "Large Feline" },
-  { crew: "Pizza", imposter: "Italian Food" },
-  { crew: "France", imposter: "European Country" },
-  { crew: "Guitar", imposter: "Musical Instrument" },
-  { crew: "Apple", imposter: "Fruit" },
-  { crew: "Mars", imposter: "Planet" },
-  { crew: "Titanic", imposter: "Famous Ship" },
-  { crew: "Mona Lisa", imposter: "Famous Painting" },
-  { crew: "Basketball", imposter: "Ball Sport" },
-  { crew: "Sushi", imposter: "Japanese Food" },
-  { crew: "Elephant", imposter: "Large Herbivore" },
-  { crew: "London", imposter: "Major City" },
-  { crew: "Spiderman", imposter: "Superhero" },
-  { crew: "Minecraft", imposter: "Video Game" },
-  { crew: "Harry Potter", imposter: "Book Character" },
-];
-
 const WORDLE_WORDS = [
   'APPLE', 'BEACH', 'BRAIN', 'BREAD', 'BRUSH', 'CHAIR', 'CHEST', 'CHORD', 'CLICK', 'CLOCK',
   'CLOUD', 'DANCE', 'DIARY', 'DRINK', 'DRIVE', 'EARTH', 'FEAST', 'FIELD', 'FRUIT', 'GLASS',
@@ -83,18 +65,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
   const [isAuth, setIsAuth] = useState(false);
   const [connectionAttempts, setConnectionAttempts] = useState(0);
   const [wordleState, setWordleState] = useState<{ active: boolean, word: string, guesses: number } | null>(null);
-  const [roleInfo, setRoleInfo] = useState<{ role: string, topic: string } | null>(null);
-  const [imposterState, setImposterState] = useState<{
-    status: 'idle' | 'lobby' | 'turns' | 'discussion' | 'voting',
-    players: Record<string, any>,
-    turnIndex: number,
-    currentTopic?: { crew: string, imposter: string },
-    discussionEndTime?: number
-  }>({
-    status: 'idle',
-    players: {},
-    turnIndex: 0
-  });
   const scrollRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -110,67 +80,10 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
       }
     });
 
-    // Listen for Imposter state
-    GunService.imposter.get('status').on((status: any) => {
-      setImposterState(prev => ({ ...prev, status: status || 'idle' }));
-    });
-
-    GunService.imposter.get('config').on((config: any) => {
-      if (config) {
-        setImposterState(prev => ({
-          ...prev,
-          turnIndex: config.turnIndex || 0,
-          currentTopic: config.currentTopic ? JSON.parse(config.currentTopic) : undefined,
-          discussionEndTime: config.discussionEndTime || 0
-        }));
-      }
-    });
-
-    GunService.imposter.get('players').map().on((player: any, username: string) => {
-      setImposterState(prev => {
-        const newPlayers = { ...prev.players };
-        if (player === null) {
-          delete newPlayers[username];
-        } else {
-          newPlayers[username] = player;
-        }
-        return { ...prev, players: newPlayers };
-      });
-
-      // Local role info update
-      if (username === currentUser.username && player) {
-        if (player.role && player.topic) {
-          setRoleInfo({ role: player.role, topic: player.topic });
-        } else {
-          setRoleInfo(null);
-        }
-      }
-    });
-
     return () => {
       GunService.wordle.off();
-      GunService.imposter.off();
     };
-  }, [currentUser.username]);
-
-  // Discussion timer effect
-  useEffect(() => {
-    if (imposterState.status === 'discussion' && imposterState.discussionEndTime) {
-      const timer = setInterval(() => {
-        if (Date.now() >= imposterState.discussionEndTime) {
-          clearInterval(timer);
-          // Only one person needs to trigger the transition
-          // We'll use the first player in alphabetical order who is still online
-          const sortedPlayers = Object.keys(imposterState.players).sort();
-          if (sortedPlayers[0] === currentUser.username) {
-            GunService.imposter.get('status').put('voting');
-            sendSystemMessage("Discussion over! Voting phase starts now. Type `vote (username)` to cast your vote.");
-          }
-        }
-      }, 1000);
-      return () => clearInterval(timer);
-    }
-  }, [imposterState.status, imposterState.discussionEndTime, currentUser.username, imposterState.players]);
+  }, []);
 
   useEffect(() => {
     // Track auth status
@@ -248,6 +161,7 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
 
       if (msg && (msg.text || msg.image)) {
         setMessages(prev => {
+          // Prevent duplicates
           if (prev.some(m => m.id === id)) return prev;
           
           const newMsg: Message = {
@@ -258,15 +172,16 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             timestamp: msg.timestamp || Date.now(),
             reactions: msg.reactions ? JSON.parse(msg.reactions) : [],
             recipient: msg.recipient,
-            image: msg.image,
-            isGameMessage: !!msg.isGameMessage
+            image: msg.image
           };
 
+          // If it's a private message and we're the recipient, add to recent chats
           if (recipient && msg.sender !== currentUser.username) {
             gunUser.get('profile').get('recentChats').get(msg.sender).put(true);
           }
 
           const updated = [...prev, newMsg].sort((a, b) => a.timestamp - b.timestamp);
+          // Keep only last 200 messages for performance
           return updated.slice(-200);
         });
       }
@@ -289,151 +204,61 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     if (!inputText.trim() && !selectedImage) return;
 
     const trimmedInput = inputText.trim();
-    const isWordleGuess = !recipient && trimmedInput.toLowerCase().startsWith('guess ') && wordleState?.active;
-    const isWordleCommand = !recipient && trimmedInput.toLowerCase().startsWith('/wordle');
-    const isImposterCommand = !recipient && trimmedInput.toLowerCase().startsWith('/imposter');
 
-    // 1. Handle Wordle Logic (Commands and Guesses)
-    if (isWordleCommand) {
+    // Handle Wordle Commands
+    if (!recipient && trimmedInput.toLowerCase().startsWith('/wordle')) {
       const command = trimmedInput.toLowerCase();
+      
       if (command === '/wordle cancel') {
         if (!wordleState?.active) {
           sendSystemMessage('No Wordle game is currently in progress.');
         } else {
           const revealedWord = wordleState.word;
           sendSystemMessage(`🚫 **Wordle Cancelled!**\n\nThe word was: **${revealedWord}**\n\n*Game ended by ${currentUser.username}*`);
-          GunService.wordle.put({ active: false, word: '', guesses: 0, startTime: 0 });
+          
+          // Reset game
+          GunService.wordle.put({
+            active: false,
+            word: '',
+            guesses: 0,
+            startTime: 0
+          });
         }
-      } else if (command === '/wordle') {
+        setInputText('');
+        return;
+      }
+
+      if (command === '/wordle') {
         if (wordleState?.active) {
           sendSystemMessage('A Wordle game is already in progress!');
         } else {
           const randomWord = WORDLE_WORDS[Math.floor(Math.random() * WORDLE_WORDS.length)];
-          GunService.wordle.put({ active: true, word: randomWord, guesses: 0, startTime: Date.now() });
+          GunService.wordle.put({
+            active: true,
+            word: randomWord,
+            guesses: 0,
+            startTime: Date.now()
+          });
           sendSystemMessage('🎮 **Multiplayer Wordle Started!** Guess the 5-letter word by typing `guess <word>`.');
         }
-      }
-      setInputText('');
-      return;
-    }
-
-    if (isWordleGuess) {
-      const guess = trimmedInput.split(' ')[1]?.toUpperCase();
-      if (!guess || guess.length !== 5) {
-        sendSystemMessage('Your guess must be a valid 5-letter word.');
-        setInputText('');
-        return;
-      }
-      processWordleGuess(guess);
-      // We DON'T return here, so the guess is also sent as a chat message
-    }
-
-    // 2. Handle Imposter Commands
-    if (isImposterCommand) {
-      const parts = trimmedInput.split(' ');
-      const cmd = parts[1]?.toLowerCase();
-
-      if (!cmd) {
-        if (imposterState.status !== 'idle') {
-          sendSystemMessage('An Imposter game is already in progress!');
-        } else {
-          GunService.imposter.get('status').put('lobby');
-          GunService.imposter.get('players').put(null);
-          GunService.imposter.get('config').put({ turnIndex: 0, currentTopic: '', discussionEndTime: 0 });
-          sendSystemMessage('A new Imposter game is forming! Type `/imposter join` to participate.');
-        }
-      } else if (cmd === 'join') {
-        if (imposterState.status !== 'lobby') {
-          sendSystemMessage('No game is currently forming. Use `/imposter` to start one.');
-        } else if (imposterState.players[currentUser.username]) {
-          sendSystemMessage('You’re already in the game.');
-        } else {
-          GunService.imposter.get('players').get(currentUser.username).put({
-            username: currentUser.username,
-            hasSpoken: false,
-            vote: ''
-          });
-          const playerCount = Object.keys(imposterState.players).length + 1;
-          sendSystemMessage(`${currentUser.username} has joined the game! (${playerCount} players)`);
-          if (playerCount >= 3) sendSystemMessage('We have enough players! Type `/imposter start` to begin.');
-        }
-      } else if (cmd === 'start') {
-        if (imposterState.status === 'lobby') {
-          const playerList = Object.keys(imposterState.players);
-          if (playerList.length < 3) {
-            sendSystemMessage('Need at least 3 players to start.');
-          } else {
-            const imposterIndex = Math.floor(Math.random() * playerList.length);
-            const topic = TOPICS[Math.floor(Math.random() * TOPICS.length)];
-            GunService.imposter.get('status').put('turns');
-            GunService.imposter.get('config').put({ turnIndex: 0, currentTopic: JSON.stringify(topic) });
-            playerList.forEach((uname, idx) => {
-              const isImposter = idx === imposterIndex;
-              GunService.imposter.get('players').get(uname).put({
-                role: isImposter ? 'Imposter' : 'Crewmate',
-                topic: isImposter ? topic.imposter : topic.crew,
-                hasSpoken: false,
-                vote: ''
-              });
-            });
-            sendSystemMessage('The Imposter game is starting! Roles assigned.');
-            sendSystemMessage(`It's ${playerList[0]}'s turn.`);
-          }
-        }
-      } else if (cmd === 'cancel') {
-        if (imposterState.status !== 'idle') {
-          const imposter = Object.values(imposterState.players).find(p => p.role === 'Imposter');
-          sendSystemMessage(`Game cancelled! Imposter was **${imposter?.username || 'unknown'}**. Topic: "**${imposterState.currentTopic?.imposter || 'unknown'}**".`);
-          resetImposterGame();
-        }
-      }
-      setInputText('');
-      return;
-    }
-
-    // 3. Handle Voting
-    if (!recipient && imposterState.status === 'voting' && trimmedInput.toLowerCase().startsWith('vote ')) {
-      const targetUsername = trimmedInput.substring(5).trim();
-      const player = imposterState.players[currentUser.username];
-      if (player && !player.vote) {
-        const target = Object.keys(imposterState.players).find(u => u.toLowerCase() === targetUsername.toLowerCase());
-        if (target) {
-          GunService.imposter.get('players').get(currentUser.username).get('vote').put(target);
-          sendSystemMessage(`You voted for ${target}.`);
-          const updatedPlayers = { ...imposterState.players };
-          updatedPlayers[currentUser.username].vote = target;
-          if (Object.values(updatedPlayers).every(p => p.vote)) processVotingResults(updatedPlayers);
-        } else {
-          sendSystemMessage('Invalid player to vote for.');
-        }
-      } else if (player?.vote) {
-        sendSystemMessage('You have already voted.');
-      }
-      setInputText('');
-      return;
-    }
-
-    // 4. Handle Imposter Game Turns
-    if (!recipient && imposterState.status === 'turns') {
-      const playerList = Object.keys(imposterState.players).sort();
-      const currentPlayer = playerList[imposterState.turnIndex];
-      if (currentPlayer === currentUser.username) {
-        sendChatMessage(trimmedInput, true);
-        const nextIndex = imposterState.turnIndex + 1;
-        if (nextIndex >= playerList.length) {
-          GunService.imposter.get('status').put('discussion');
-          GunService.imposter.get('config').get('discussionEndTime').put(Date.now() + 60000);
-          sendSystemMessage("Discussion phase starts! 1 minute remaining.");
-        } else {
-          GunService.imposter.get('config').get('turnIndex').put(nextIndex);
-          sendSystemMessage(`It's ${playerList[nextIndex]}'s turn.`);
-        }
         setInputText('');
         return;
       }
     }
 
-    // 5. Regular Message Sending (Lobby or Private)
+    if (!recipient && trimmedInput.toLowerCase().startsWith('guess ')) {
+      if (wordleState?.active) {
+        const guess = trimmedInput.split(' ')[1]?.toUpperCase();
+        if (!guess || guess.length !== 5) {
+          sendSystemMessage('Your guess must be a valid 5-letter word.');
+          setInputText('');
+          return;
+        }
+
+        // Process Wordle logic but ALSO send the message so others see the guess
+        processWordleGuess(guess);
+      }
+    }
 
     const chatNode = recipient 
       ? gun.get('calcchat_private_v2').get([currentUser.username, recipient].sort().join('_'))
@@ -474,20 +299,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     setSelectedImage(null);
   };
 
-  const sendChatMessage = (text: string, isGameMessage: boolean = false) => {
-    const chatNode = gun.get('calcchat_lobby_v2');
-    const msgId = uuidv4();
-    chatNode.get(msgId).put({
-      sender: currentUser.username,
-      sender_pic: currentUser.profilePic,
-      text,
-      timestamp: Date.now(),
-      recipient: '',
-      reactions: '[]',
-      isGameMessage
-    });
-  };
-
   const sendSystemMessage = (text: string) => {
     const chatNode = gun.get('calcchat_lobby_v2');
     const msgId = uuidv4();
@@ -501,54 +312,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
     }, (ack: any) => {
       if (ack.err) console.error('System message error:', ack.err);
     });
-  };
-
-  const resetImposterGame = () => {
-    GunService.imposter.get('status').put('idle');
-    GunService.imposter.get('players').put(null);
-    GunService.imposter.get('config').put({ turnIndex: 0, currentTopic: '', discussionEndTime: 0 });
-    setRoleInfo(null);
-  };
-
-  const processVotingResults = (players: Record<string, any>) => {
-    const voteCounts: Record<string, number> = {};
-    Object.values(players).forEach(p => {
-      if (p.vote) {
-        voteCounts[p.vote] = (voteCounts[p.vote] || 0) + 1;
-      }
-    });
-
-    let maxVotes = 0;
-    let votedOut: string | null = null;
-    let tie = false;
-
-    for (const [user, count] of Object.entries(voteCounts)) {
-      if (count > maxVotes) {
-        maxVotes = count;
-        votedOut = user;
-        tie = false;
-      } else if (count === maxVotes) {
-        tie = true;
-      }
-    }
-
-    if (tie || !votedOut) {
-      sendSystemMessage("It's a tie! No one was voted out.");
-      const imposter = Object.values(players).find(p => p.role === 'Imposter')!;
-      sendSystemMessage(`The Imposter survives! **${imposter.username}** wins! The topic was "**${imposterState.currentTopic?.crew}**".`);
-    } else {
-      const targetPlayer = players[votedOut];
-      const isImposter = targetPlayer?.role === 'Imposter';
-      sendSystemMessage(`**${votedOut}** was voted out!`);
-      if (isImposter) {
-        sendSystemMessage(`They WERE the Imposter! Crewmates win!`);
-      } else {
-        const imposter = Object.values(players).find(p => p.role === 'Imposter')!;
-        sendSystemMessage(`They were NOT the Imposter. **${imposter.username}** wins! The topic was "**${imposterState.currentTopic?.crew}**".`);
-      }
-    }
-
-    resetImposterGame();
   };
 
   const processWordleGuess = (guess: string) => {
@@ -724,18 +487,6 @@ export const ChatView: React.FC<ChatViewProps> = ({ currentUser, recipient, onUs
             </div>
             <div className="w-8 h-8 rounded-lg bg-emerald-500 flex items-center justify-center shadow-lg shadow-emerald-900/40">
               <span className="text-white font-bold text-xs">W</span>
-            </div>
-          </div>
-        )}
-
-        {!recipient && roleInfo && (
-          <div className="ml-auto flex items-center gap-3 px-4 py-2 bg-red-500/10 border border-red-500/20 rounded-2xl animate-in fade-in slide-in-from-right-4">
-            <div className="flex flex-col items-end">
-              <span className="text-[10px] font-black text-red-500 uppercase tracking-widest">{roleInfo.role}</span>
-              <span className="text-[9px] text-red-400/70 font-mono">Topic: {roleInfo.topic}</span>
-            </div>
-            <div className="w-8 h-8 rounded-lg bg-red-500 flex items-center justify-center shadow-lg shadow-red-900/40">
-              <span className="text-white font-bold text-xs">!</span>
             </div>
           </div>
         )}

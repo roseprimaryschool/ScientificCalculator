@@ -54,8 +54,5 @@ export const GunService = {
   presence: gun.get('calcchat_presence_v2'),
 
   // Wordle game state
-  wordle: gun.get('calcchat_wordle_v2'),
-
-  // Imposter game state
-  imposter: gun.get('calcchat_imposter_v2')
+  wordle: gun.get('calcchat_wordle_v2')
 };
