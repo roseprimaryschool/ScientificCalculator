@@ -1,5 +1,5 @@
 {
-  "name": "CalcChat Pro",
-  "description": "A professional scientific calculator with a hidden, fully-featured persistent chat system.",
+  "name": "Imposter Chat",
+  "description": "A real-time chat application with an integrated 'Imposter' social deduction game.",
   "requestFramePermissions": []
 }

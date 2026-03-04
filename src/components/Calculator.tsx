@@ -4,9 +4,10 @@ import { motion } from 'motion/react';
 
 interface CalculatorProps {
   onUnlock: () => void;
+  onOpenGames?: () => void;
 }
 
-export const Calculator: React.FC<CalculatorProps> = ({ onUnlock }) => {
+export const Calculator: React.FC<CalculatorProps> = ({ onUnlock, onOpenGames }) => {
   const [display, setDisplay] = useState('0');
   const [equation, setEquation] = useState('');
   const [memory, setMemory] = useState(0);
@@ -23,6 +24,9 @@ export const Calculator: React.FC<CalculatorProps> = ({ onUnlock }) => {
   const handleClear = () => {
     if (display === '20482048') {
       onUnlock();
+    }
+    if (display === '67.67' && onOpenGames) {
+      onOpenGames();
     }
     setDisplay('0');
     setEquation('');

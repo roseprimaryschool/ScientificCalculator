@@ -1,0 +1,58 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Secret Games Section</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>ARCADE_OS v1.0</h1>
+            <button id="backBtn" class="retro-btn">EXIT_SYSTEM</button>
+        </header>
+
+        <div class="game-grid">
+            <div class="game-card" onclick="startGame('escaperoad')">
+                <div class="game-icon">🏎️</div>
+                <h3>ESCAPE_ROAD</h3>
+                <p>High-speed city escape. Don't get caught.</p>
+            </div>
+            <div class="game-card" onclick="startGame('snake')">
+                <div class="game-icon">🐍</div>
+                <h3>NEON_SNAKE</h3>
+                <p>Classic snake with a neon twist.</p>
+            </div>
+            <div class="game-card" onclick="startGame('tictactoe')">
+                <div class="game-icon">❌</div>
+                <h3>VOID_TIC_TAC_TOE</h3>
+                <p>Beat the void in a game of logic.</p>
+            </div>
+            <div class="game-card locked">
+                <div class="game-icon">🔒</div>
+                <h3>ENCRYPTED_DATA</h3>
+                <p>Coming soon...</p>
+            </div>
+        </div>
+
+        <div id="gameModal" class="modal">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h2 id="gameTitle">GAME_TITLE</h2>
+                    <button class="close-btn" onclick="closeGame()">&times;</button>
+                </div>
+                <div id="gameContainer">
+                    <!-- Game canvas or elements will be injected here -->
+                </div>
+                <div class="game-controls">
+                    <p id="gameScore">SCORE: 0</p>
+                    <button id="restartBtn" class="retro-btn">RESTART</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="script.js"></script>
+</body>
+</html>

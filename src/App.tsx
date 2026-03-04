@@ -13,11 +13,22 @@ import { motion, AnimatePresence } from 'motion/react';
 
 export default function App() {
   const [isUnlocked, setIsUnlocked] = useState(false);
+  const [showGames, setShowGames] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
   const [activeView, setActiveView] = useState<'lobby' | 'private' | 'settings' | 'admin'>('lobby');
   const [activeRecipient, setActiveRecipient] = useState<string | undefined>(undefined);
   const [selectedProfile, setSelectedProfile] = useState<Partial<User> | null>(null);
   const [lastActivity, setLastActivity] = useState(Date.now());
+
+  useEffect(() => {
+    const handleMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'CLOSE_GAMES') {
+        setShowGames(false);
+      }
+    };
+    window.addEventListener('message', handleMessage);
+    return () => window.removeEventListener('message', handleMessage);
+  }, []);
 
   // Theme application
   useEffect(() => {
@@ -135,10 +146,22 @@ export default function App() {
     ApiService.setIsUnlocked(false);
   };
 
+  if (showGames) {
+    return (
+      <div className="fixed inset-0 z-[9999] bg-black">
+        <iframe 
+          src="/games/index.html" 
+          className="w-full h-full border-none"
+          title="Games Section"
+        />
+      </div>
+    );
+  }
+
   if (!isUnlocked) {
     return (
       <div className="theme-wrapper h-screen overflow-hidden">
-        <Calculator onUnlock={handleUnlock} />
+        <Calculator onUnlock={handleUnlock} onOpenGames={() => setShowGames(true)} />
       </div>
     );
   }
