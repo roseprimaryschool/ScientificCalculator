@@ -153,6 +153,7 @@ export default function App() {
           src="/games/index.html" 
           className="w-full h-full border-none"
           title="Games Section"
+          allowFullScreen
         />
       </div>
     );

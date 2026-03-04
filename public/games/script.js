@@ -6,11 +6,50 @@ const gameTitle = document.getElementById('gameTitle');
 const gameScore = document.getElementById('gameScore');
 const restartBtn = document.getElementById('restartBtn');
 const backBtn = document.getElementById('backBtn');
+const fullScreenBtn = document.getElementById('fullScreenBtn');
+const modalContent = document.querySelector('.modal-content');
 
 backBtn.onclick = () => {
     // Communicate back to the parent React app
     window.parent.postMessage({ type: 'CLOSE_GAMES' }, '*');
 };
+
+fullScreenBtn.onclick = () => {
+    toggleFullScreen();
+};
+
+function toggleFullScreen() {
+    if (!document.fullscreenElement && !document.webkitFullscreenElement) {
+        const elem = gameModal;
+        if (elem.requestFullscreen) {
+            elem.requestFullscreen();
+        } else if (elem.webkitRequestFullscreen) { /* Safari */
+            elem.webkitRequestFullscreen();
+        } else {
+            // Fallback for older iOS
+            modalContent.classList.add('is-fullscreen');
+        }
+    } else {
+        if (document.exitFullscreen) {
+            document.exitFullscreen();
+        } else if (document.webkitExitFullscreen) {
+            document.webkitExitFullscreen();
+        } else {
+            modalContent.classList.remove('is-fullscreen');
+        }
+    }
+}
+
+// Listen for fullscreen changes to update UI or handle escape key
+document.addEventListener('fullscreenchange', handleFullScreenChange);
+document.addEventListener('webkitfullscreenchange', handleFullScreenChange);
+
+function handleFullScreenChange() {
+    const isFS = !!(document.fullscreenElement || document.webkitFullscreenElement);
+    if (!isFS) {
+        modalContent.classList.remove('is-fullscreen');
+    }
+}
 
 function startGame(gameType) {
     gameModal.style.display = 'flex';
@@ -29,10 +68,15 @@ function startGame(gameType) {
 }
 
 function closeGame() {
+    if (document.fullscreenElement || document.webkitFullscreenElement) {
+        if (document.exitFullscreen) document.exitFullscreen();
+        else if (document.webkitExitFullscreen) document.webkitExitFullscreen();
+    }
     gameModal.style.display = 'none';
     if (currentGame && currentGame.stop) currentGame.stop();
     currentGame = null;
     gameContainer.innerHTML = '';
+    modalContent.classList.remove('is-fullscreen');
 }
 
 function updateScore() {
@@ -50,6 +94,7 @@ function initEscapeRoad() {
     iframe.style.height = '100%';
     iframe.style.border = 'none';
     iframe.style.background = '#000';
+    iframe.allowFullscreen = true;
     gameContainer.appendChild(iframe);
     
     restartBtn.onclick = () => {

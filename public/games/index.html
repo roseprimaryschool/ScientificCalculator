@@ -41,7 +41,10 @@
             <div class="modal-content">
                 <div class="modal-header">
                     <h2 id="gameTitle">GAME_TITLE</h2>
-                    <button class="close-btn" onclick="closeGame()">&times;</button>
+                    <div class="modal-actions">
+                        <button id="fullScreenBtn" class="action-btn" title="Full Screen">⛶</button>
+                        <button class="close-btn" onclick="closeGame()">&times;</button>
+                    </div>
                 </div>
                 <div id="gameContainer">
                     <!-- Game canvas or elements will be injected here -->
